@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Quiet Presence — 绘画版</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #191919; overflow: hidden;
+    font-family: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei", sans-serif; }
+  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    cursor: crosshair; touch-action: none; }
+  #hud { position: fixed; left: 14px; top: 12px; color: #6b665e; user-select: none;
+    pointer-events: none; line-height: 1.45; mix-blend-mode: multiply; }
+  #hud .t { font-size: 15px; font-weight: 600; color: #4d483f; }
+  #hud .s { font-size: 12px; color: #837d71; }
+  #hud .s a { color: #8a3b40; text-decoration: none; pointer-events: auto; }
+  #bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; background: rgba(252,250,243,.85);
+    border: 1px solid rgba(60,50,40,.18); border-radius: 10px; padding: 7px 10px;
+    backdrop-filter: blur(6px); color: #5c564c; font-size: 12.5px; }
+  #bar button, #bar select { background: #efece2; color: #4d483f; border: 1px solid #c9c2b2;
+    border-radius: 7px; padding: 5px 10px; font-size: 12.5px; cursor: pointer; }
+  #bar button:hover { background: #e6e2d4; }
+  #bar label { color: #837d71; }
+  #panel { position: fixed; right: 14px; top: 12px; width: 218px; max-height: calc(100vh - 90px);
+    overflow-y: auto; background: rgba(252,250,243,.9); border: 1px solid rgba(60,50,40,.18);
+    border-radius: 10px; padding: 10px 12px 12px; backdrop-filter: blur(6px);
+    color: #5c564c; font-size: 12px; }
+  #panel h3 { margin: 0 0 4px; font-size: 12.5px; color: #4d483f; font-weight: 600; }
+  #panel .row { margin: 8px 0 1px; display: flex; justify-content: space-between; }
+  #panel .row .v { color: #8a3b40; font-variant-numeric: tabular-nums; }
+  #panel input[type=range] { width: 100%; height: 14px; accent-color: #8a3b40; margin: 0; }
+  #panel.hidden { display: none; }
+  #err { position: fixed; inset: 0; margin: auto; width: min(760px, 88vw); height: fit-content;
+    background: #2a1215; color: #ffb4b4; border: 1px solid #7a2e2e; border-radius: 10px;
+    padding: 18px 22px; white-space: pre-wrap; font: 12.5px/1.6 Consolas, monospace;
+    max-height: 70vh; overflow: auto; z-index: 10; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="t">The Quiet Presence</div>
+  <div class="s">绘画版 · 取材自 <a href="https://www.shadertoy.com/view/fX2GRG" target="_blank" rel="noopener">The Horror of the Moorlands</a> · 线条语言参考 Louise Bourgeois 版画 · <a href="original.html">查看原版复刻</a></div>
+  <div class="s" id="stat"></div>
+</div>
+
+<div id="bar">
+  <button id="btnPause">暂停（空格）</button>
+  <button id="btnRestart">重新开始（R）</button>
+  <button id="btnFull">全屏</button>
+  <button id="btnPanel">参数面板</button>
+  <label>分辨率 <select id="selRes">
+    <option value="0.5">50%</option>
+    <option value="0.75">75%</option>
+    <option value="1" selected>100%</option>
+  </select></label>
+</div>
+
+<div id="err" hidden></div>
+
+<div id="panel">
+  <h3>参数</h3>
+  <div id="sliders"></div>
+</div>
+
+<!-- ============ Buffer A：场景 Pass——相机拉远，人形缩小，输出遮罩 ============ -->
+<script type="x-shader/x-fragment" id="shader-bufferA">// The Quiet Presence — 场景 Pass（Buffer A）
+// 相机拉远让人形变小，输出绘制遮罩而非颜色：
+//   R = 人形遮罩   G = 地面遮罩   B = 投影强度   A = 人形世界高度（归一化，用于顶部消散）
+
+mat2 Rotation(float a)
+{
+    float s = sin(a);
+    float c = cos(a);
+    return mat2(c,-s,s,c);
+}
+
+float Hash(vec2 p)
+{
+    p = fract(p*vec2(234.5,435.6));
+    p += dot(p,p+34.5);
+    return fract(p.x*p.y);
+}
+
+float Noise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = Hash(i);
+    float b = Hash(i+vec2(1.0,0.0));
+    float c = Hash(i+vec2(0.0,1.0));
+    float d = Hash(i+vec2(1.0,1.0));
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
+}
+
+float Fbm(vec2 p)
+{
+    float v = 0.0;
+    float a = 0.5;
+    for(int i=0; i<4; i++)
+    {
+        v += Noise(p)*a;
+        p *= 2.0;
+        a *= 0.5;
+    }
+    return v;
+}
+
+float Sphere(vec3 p,float r)
+{
+    return length(p)-r;
+}
+
+float Capsule(vec3 p, vec3 a, vec3 b, float r)
+{
+    vec3 pa = p-a;
+    vec3 ba = b-a;
+    float h = clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);
+    return length(pa-ba*h)-r;
+}
+
+float Terrain(vec2 xz)
+{
+    float h = Fbm(xz*0.12)*3.0;
+    h += sin(xz.x*0.15)*0.8;
+    h += cos(xz.y*0.12)*0.8;
+    return h;
+}
+
+float Smin(float a, float b, float k)
+{
+    float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0);
+    return mix(b,a,h) - k*h*(1.0-h);
+}
+
+float Creature(vec3 p)
+{
+    p.xz *= Rotation(3.14159);
+    p.y -= 2.6;
+    p.z += p.y*0.08;
+    vec3 tp = p;
+    tp.y -= 2.2;
+    float chest = Sphere(tp * vec3(1.2,1.0,0.8),0.9);
+    float stomach = Sphere((tp-vec3(0,-0.9,0))*vec3(1.0,1.2,0.7),0.7);
+    float torso = Smin(chest, stomach, 0.4);
+    float spine = Capsule(p,vec3(0,1.0,-0.25),vec3(0,3.2,-0.2),0.08);
+    torso = Smin(torso, spine, 0.25);
+    vec3 hp = p - vec3(0,3.8,0.15);
+    float skull = Sphere(hp * vec3(0.8,1.3,1.0),0.42);
+    float jaw = Capsule(hp,vec3(0,-0.15,0.0),vec3(0,-0.55,0.25),0.12);
+    float face = Capsule(hp,vec3(0,0.0,0.1),vec3(0,-0.1,0.45),0.16);
+    float head = Smin(skull, jaw, 0.18);
+    head = Smin(head, face, 0.2);
+    float shoulderL = Sphere(p - vec3(-0.55,2.7,0), 0.28);
+    float shoulderR = Sphere(p - vec3(0.55,2.7,0),0.28);
+    float armL1 = Capsule(p,vec3(-0.45,2.6,0),vec3(-1.0,1.8,0.15),0.12);
+    float armL2 = Capsule(p,vec3(-1.0,1.8,0.15),vec3(-1.15,0.8,0.3),0.09);
+    float armR1 = Capsule(p,vec3(0.45,2.6,0),vec3(1.0,1.8,0.15),0.12);
+    float armR2 = Capsule(p,vec3(1.0,1.8,0.15),vec3(1.15,0.8,0.3),0.09);
+    float clawL = Capsule(p,vec3(-1.15,0.8,0.3),vec3(-1.35,0.55,0.65),0.035);
+    float clawR = Capsule(p,vec3(1.15,0.8,0.3),vec3(1.35,0.55,0.65),0.035);
+    float hips = Sphere((p-vec3(0,1.0,0))*vec3(1.0,0.8,0.8),0.45);
+    float legL1 = Capsule(p,vec3(-0.22,0.9,0),vec3(-0.28,-0.3,0.05),0.14);
+    float legL2 = Capsule(p,vec3(-0.28,-0.3,0.05),vec3(-0.22,-1.5,0.2),0.1);
+    float legR1 = Capsule(p,vec3(0.22,0.9,0),vec3(0.28,-0.3,0.05),0.14);
+    float legR2 = Capsule(p,vec3(0.28,-0.3,0.05),vec3(0.22,-1.5,0.2),0.1);
+    float footL = Capsule(p,vec3(-0.22,-1.5,0.2),vec3(-0.22,-1.55,0.6),0.08);
+    float footR = Capsule(p,vec3(0.22,-1.5,0.2),vec3(0.22,-1.55,0.6),0.08);
+    float d = torso;
+    d = Smin(d, head, 0.3);
+    d = Smin(d, shoulderL, 0.2);
+    d = Smin(d, shoulderR, 0.2);
+    d = Smin(d, armL1, 0.2);
+    d = Smin(d, armL2, 0.2);
+    d = Smin(d, armR1, 0.2);
+    d = Smin(d, armR2, 0.2);
+    d = Smin(d, clawL, 0.08);
+    d = Smin(d, clawR, 0.08);
+    d = Smin(d, hips, 0.3);
+    d = Smin(d, legL1, 0.2);
+    d = Smin(d, legL2, 0.2);
+    d = Smin(d, legR1, 0.2);
+    d = Smin(d, legR2, 0.2);
+    d = Smin(d, footL, 0.12);
+    d = Smin(d, footR, 0.12);
+    return d;
+}
+
+vec2 Map(vec3 p)
+{
+    float g = p.y - Terrain(p.xz);
+    float c = Creature(p/uFigSize)*uFigSize;
+    if(c < g) return vec2(c,1.0);
+    return vec2(g,2.0);
+}
+
+#define ZERO (min(iFrame,0))
+vec3 Normal( in vec3 pos )
+{
+    vec3 n = vec3(0.0);
+    for( int i=ZERO; i<4; i++ )
+    {
+        vec3 e = 0.5773*(2.0*vec3((((i+3)>>1)&1),((i>>1)&1),(i&1))-1.0);
+        n += e*Map(pos+0.0005*e).x;
+    }
+    return normalize(n);
+}
+
+vec2 Raymarching(vec3 ro, vec3 rd)
+{
+    float d = 0.0;
+    float m = -1.0;
+    for(int i=0;i<96;i++)
+    {
+        vec3 p = ro + rd*d;
+        vec2 h = Map(p);
+        d += h.x;
+        m = h.y;
+        if(abs(h.x)<0.001 || d>60.0)
+            break;
+    }
+    return vec2(d,m);
+}
+
+float Shadow(vec3 ro, vec3 rd)
+{
+    float res = 1.0;
+    float t = 0.02;
+    for(int i=0;i<40;i++)
+    {
+        float h = Map(ro+rd*t).x;
+        res = min(res,10.0*h/t);
+        t += clamp(h,0.02,0.25);
+        if(h<0.001 || t>16.0) break;
+    }
+    return clamp(res,0.0,1.0);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    // 相机远远退开：人形只占画面一小部分，孤在空旷的荒原里
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    vec3 ro = vec3(0.0, 4.8, -19.0);
+    vec3 ta = vec3(0.0, 3.4, 0.0);
+    vec3 f = normalize(ta-ro);
+    vec3 r = normalize(cross(vec3(0,1,0),f));
+    vec3 u = cross(f,r);
+    vec3 rd = normalize(f + uv.x*r + uv.y*u);
+
+    vec2 hit = Raymarching(ro,rd);
+    float fig = 0.0;
+    float gnd = 0.0;
+    float shd = 0.0;
+    float hgt = 0.0;
+    if(hit.x < 60.0)
+    {
+        vec3 p = ro + rd*hit.x;
+        if(hit.y < 1.5)
+        {
+            fig = 1.0;
+            hgt = clamp(p.y/7.5, 0.0, 1.0);
+        }
+        else
+        {
+            gnd = 1.0;
+            vec3 l = normalize(vec3(5.0,9.0,-4.0) - p);
+            float sh = Shadow(p + vec3(0.0,0.02,0.0), l);
+            shd = clamp(1.0 - sh, 0.0, 1.0);
+        }
+    }
+    fragColor = vec4(fig, gnd, shd, hgt);
+}</script>
+
+<!-- ============ Image：绘画 Pass——纸面/同心圈人形/圈状笔触/放射刻线 ============ -->
+<script type="x-shader/x-fragment" id="shader-image">// The Quiet Presence — 绘画 Pass（Image）
+// 极细极锐的铅笔圈线：以人形为唯一中心，一圈圈包裹并向全画发散；
+// 圈线不规整、不闭合于方框，随角度自由起伏、断续、互相交错。
+// 人形是交叉排线画实的核，形外一圈斜排线包裹层，头肩渐渐消散；
+// 脚下圈状笔影；胸口一枚小红点。
+// 所有线条随时间极缓慢地游移、断续、重描：一张永远画不完、静而不安的画。
+
+float Hash(vec2 p)
+{
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+float Noise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = Hash(i);
+    float b = Hash(i+vec2(1.0,0.0));
+    float c = Hash(i+vec2(0.0,1.0));
+    float d = Hash(i+vec2(1.0,1.0));
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(a,b,u.x) + (c-a)*u.y*(1.0-u.x) + (d-b)*u.x*u.y;
+}
+
+float Fbm(vec2 p)
+{
+    float v = 0.0;
+    float a = 0.5;
+    for(int i=0; i<4; i++)
+    {
+        v += Noise(p)*a;
+        p *= 2.0;
+        a *= 0.5;
+    }
+    return v;
+}
+
+vec2 Fbm2(vec2 p)
+{
+    return vec2(Fbm(p), Fbm(p + vec2(19.7, 7.3)));
+}
+
+// 线节：两幅脊状噪声的峰值相交处形成孤立的小疙瘩，带细密丝纹
+float Knots(vec2 p)
+{
+    float n1 = 1.0 - abs(2.0*Noise(p) - 1.0);
+    float n2 = 1.0 - abs(2.0*Noise(p + vec2(41.3, 17.9)) - 1.0);
+    float k = n1*n2;
+    k *= 0.6 + 0.4*sin(p.x*2.3 + p.y*1.7);
+    return smoothstep(0.78, 0.95, k);
+}
+
+// 与场景 Pass 相同的相机，把场景参考点反投影回画面坐标
+vec2 Project(vec3 p)
+{
+    vec3 ro = vec3(0.0, 4.8, -19.0);
+    vec3 ta = vec3(0.0, 3.4, 0.0);
+    vec3 f = normalize(ta-ro);
+    vec3 r = normalize(cross(vec3(0,1,0),f));
+    vec3 u = cross(f,r);
+    vec3 d = normalize(p-ro);
+    float pz = max(dot(d,f), 0.001);
+    return vec2(dot(d,r), dot(d,u))/pz*iResolution.y + 0.5*iResolution.xy;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    float t = iTime*0.05*uDrift;   // 缓慢的游移（速度可调）
+    vec2 fc = fragCoord;
+    float diag = max(iResolution.x, iResolution.y);
+
+    // ---- 模糊采样场景遮罩（人形/地面/投影） ----
+    vec3 s = vec3(0.0);
+    for(int i=0; i<9; i++)
+    {
+        float a = 6.2832*float(i)/9.0 + Hash(fc*0.11)*6.2832;
+        float rr = 0.5 + 2.4*Hash(fc + float(i)*11.7);
+        vec2 px = fc + vec2(cos(a), sin(a))*rr;
+        s += texture(iChannel0, px/iResolution.xy).rgb;
+    }
+    s /= 9.0;
+    float fig = s.r;
+    float gnd = s.g;
+    float shd = s.b;
+    float hgt = texture(iChannel0, fc/iResolution.xy).a;
+
+    // 大半径再糊一层：得到穿过了形体内部的连续场，圈线才画得进身体里
+    float figBig = 0.0;
+    for(int i=0; i<9; i++)
+    {
+        float a = 6.2832*float(i)/9.0 + Hash(fc*0.07)*6.2832;
+        float rr = 4.0 + 26.0*Hash(fc + float(i)*5.3);
+        vec2 px = fc + vec2(cos(a), sin(a))*rr;
+        figBig += texture(iChannel0, px/iResolution.xy).r;
+    }
+    figBig /= 9.0;
+
+    // ---- 纸面 ----
+    vec3 col = vec3(0.962, 0.945, 0.900);
+    col *= 1.0 + (Hash(fc) - 0.5)*0.05;                 // 纸粒
+    col *= 1.0 + (Noise(fc*0.7) - 0.5)*0.025;           // 纸纤维
+    float rC = length((fc - 0.5*iResolution.xy)/iResolution.y);
+    col *= 1.0 - 0.05*smoothstep(0.55, 1.05, rC);       // 四角微微沉下去
+
+    // 纸面上缓慢漂移的扰动：让每根线都在被不知不觉重画
+    vec2 warp = (Fbm2(fc*0.006 + vec2(t*0.6, 0.0)) - 0.5)*12.0*uWarp;
+    float stroke = 0.30 + 0.70*smoothstep(0.26, 0.64, Fbm(fc*0.06 + warp*0.12 + vec2(7.7, 2.2)));
+
+    vec3 graphite = vec3(0.23, 0.215, 0.20);
+    vec3 inkGrey  = vec3(0.30, 0.27, 0.26);
+
+    // 人形参考点
+    vec2 C1 = Project(vec3(0.0, 3.3, 0.0));
+
+    // ---- 围绕人形发散的自由圈线场：单一中心，细而锐的铅笔圈线 ----
+    {
+        vec2 d = fc - C1;
+        float r = length(d);
+        float ang = atan(d.y, d.x);
+        vec2 cir = vec2(cos(ang), sin(ang));            // 无接缝的角度域
+
+        // 圈距：近密远疏（包裹人形，向外发散）
+        float spacing = (4.5 + r*0.022)/uDensity;
+        // 自由抖动：随角度起伏（低频）+ 高频干涩抖动，幅度按圈距自适应，不粘连
+        float wobble = (Fbm(cir*2.3 + warp*0.25 + vec2(0.0, t*0.5)) - 0.5)*spacing*0.85*uWobble
+                     + (Noise(cir*7.0 + vec2(t*0.3, 0.0)) - 0.5)*spacing*0.35*uWobble
+                     + (Noise(fc*0.45) - 0.5)*1.5*uWobble;
+        float re = max(r + wobble, 0.0);
+
+        // 相位随角度微偏 + 每条圈各自的错位：圈不完全是同心圆
+        float phase = (Noise(cir*3.1 + vec2(11.0, t*0.25)) - 0.5)*spacing*0.9;
+        float ringIdx = floor((re + phase)/spacing);
+        phase += (Noise(vec2(ringIdx*0.83, 7.7)) - 0.5)*spacing*0.5;
+        float perRing = (Noise(cir*11.0 + vec2(0.0, ringIdx*2.3)) - 0.5)*spacing*0.20;
+
+        float f = mod(re + phase + perRing, spacing) - spacing*0.5;   // 到最近圈线的像素距离
+
+        // 细而锐的铅笔线：半宽约半像素到一像素（粗细可调）
+        float lw = (0.50 + 0.45*Fbm(fc*0.05 + 5.0))*uWidth;  // 笔压
+        float l1 = 1.0 - smoothstep(lw, lw + 0.85*max(uWidth, 0.4), abs(f));
+        // 断笔：沿圈起落
+        float dash = smoothstep(0.30, 0.62, Noise(cir*6.5 + vec2(0.0, ringIdx*3.7)) + 0.12);
+        l1 *= stroke*mix(1.0, dash, uDash);
+        l1 *= 0.45 + 0.55*Noise(fc*1.3);                    // 铅笔颗粒
+        col = mix(col, graphite, l1*0.55*uInk);
+
+        // 一层更淡的交错细线：同中心、异圈距，增加杂乱
+        float re2 = re*1.312 + 2.3;
+        float f2 = mod(re2 + phase*0.7, spacing*1.24) - spacing*0.62;
+        float lw2v = 0.45 + 0.4*Fbm(fc*0.052 + 19.0);
+        float l2 = 1.0 - smoothstep(lw2v, lw2v + 0.85, abs(f2));
+        l2 *= stroke*0.75*dash;
+        l2 *= 0.40 + 0.60*Noise(fc*1.5 + 7.0);
+        col = mix(col, graphite, l2*0.28*uInk*uCross);
+    }
+
+    // ---- 人形：交叉排线画实的核 + 形外包裹层，头肩渐渐消散 ----
+    {
+        float mIn = smoothstep(0.08, 0.25, fig);
+        float wob = Fbm(fc*0.05 + warp*0.15 + vec2(0.0, t*2.0));
+        float dis = smoothstep(0.50, 0.92, hgt + (wob - 0.5)*0.6);
+
+        // 两层斜向排线的坐标
+        float ha = 0.62;
+        vec2 hp = vec2(fc.x*cos(ha) - fc.y*sin(ha), fc.x*sin(ha) + fc.y*cos(ha));
+        float hb = 0.62 + 1.25;
+        vec2 hq = vec2(fc.x*cos(hb) - fc.y*sin(hb), fc.x*sin(hb) + fc.y*cos(hb));
+
+        // 形外一圈包裹层：斜排线
+        float wrapBand = smoothstep(0.10, 0.28, figBig)*(1.0 - smoothstep(0.40, 0.80, figBig));
+        float w1 = fract(hp.y*0.11 + Fbm(fc*0.045 + warp*0.2)*2.4 + t*0.5);
+        float g1 = 1.0 - smoothstep(0.10, 0.24, abs(w1 - 0.5));
+        float w2 = fract(hq.y*0.13 + Fbm(fc*0.05 + 11.0)*2.4 - t*0.4);
+        float g2 = 1.0 - smoothstep(0.10, 0.24, abs(w2 - 0.5));
+        float wrap = (g1 + g2)*wrapBand*stroke;
+        col = mix(col, graphite, clamp(wrap, 0.0, 1.0)*0.42*uWrap);
+
+        // 形内：交叉排线核，越往头肩越疏
+        float lum = 0.35 + 0.65*(1.0 - hgt);
+        float n1 = fract(hp.y*0.075*uBody + Fbm(fc*0.06 + 3.0)*2.0);
+        float i1 = 1.0 - smoothstep(0.08, 0.20, abs(n1 - 0.5));
+        float n2 = fract(hq.y*0.09*uBody + Fbm(fc*0.06 + 17.0)*2.0);
+        float i2 = 1.0 - smoothstep(0.08, 0.20, abs(n2 - 0.5));
+        float body = (i1 + i2)*mIn*stroke*(1.0 - 0.6*dis)*lum;
+        col = mix(col, graphite*0.9, clamp(body, 0.0, 1.0)*0.50);
+
+        // 杂乱的深色边缘
+        float edge = smoothstep(0.10, 0.30, fig)*(1.0 - smoothstep(0.30, 0.60, fig));
+        col = mix(col, graphite*0.75, edge*stroke*(1.0 - 0.7*dis)*0.40);
+    }
+
+    // ---- 胸口的实心小红点 ----
+    {
+        vec2 Cp = Project(vec3(0.0, 4.6, 0.15));
+        float dC = length(fc - Cp);
+        float dt2 = 1.0 - smoothstep(3.5, 6.0, dC);
+        col = mix(col, vec3(0.549, 0.055, 0.102), dt2*0.75);
+    }
+
+    fragColor = vec4(col, 1.0);
+}</script>
+
+<script>
+"use strict";
+(() => {
+  window.addEventListener("error", e => {
+    window.__pageError = (e.message || String(e)) + (e.error && e.error.stack ? "\n" + e.error.stack : "");
+  });
+  const canvas = document.getElementById("c");
+  const errBox = document.getElementById("err");
+  const statEl = document.getElementById("stat");
+  const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+
+  function fatal(msg) { errBox.hidden = false; errBox.textContent = msg; }
+  if (!gl) { fatal("需要 WebGL2 支持：请使用较新的 Chrome / Edge / Firefox 打开本页面。"); return; }
+
+  // ---------- Shadertoy 兼容的 GLSL 包装 ----------
+  const VERT = `#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  function fragSource(user) {
+    return `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+
+uniform vec3      iResolution;
+uniform float     iTime;
+uniform float     iTimeDelta;
+uniform int       iFrame;
+uniform float     iFrameRate;
+uniform vec4      iMouse;
+uniform vec4      iDate;
+uniform float     iSampleRate;
+uniform vec3      iChannelResolution[4];
+uniform float     iChannelTime[4];
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+
+uniform float uDensity;   // 线条密度
+uniform float uWidth;     // 线条粗细
+uniform float uWobble;    // 线条抖动幅度
+uniform float uInk;       // 线条深浅
+uniform float uDash;      // 断笔
+uniform float uCross;     // 交错线
+uniform float uDrift;     // 线条移动速度
+uniform float uWarp;      // 纸面扰动
+uniform float uFigSize;   // 人形大小
+uniform float uBody;      // 人形排线密度
+uniform float uWrap;      // 包裹层强度
+
+` + user + `
+out vec4 outColor;
+void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
+  }
+
+  function compileShader(type, src, label) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      fatal("[" + label + "] 着色器编译失败:\n" + gl.getShaderInfoLog(s));
+      throw new Error("compile failed");
+    }
+    return s;
+  }
+
+  function buildProgram(fsSrc, label) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compileShader(gl.VERTEX_SHADER, VERT, label));
+    gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSrc, label));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      fatal("[" + label + "] 链接失败:\n" + gl.getProgramInfoLog(p));
+      throw new Error("link failed");
+    }
+    const u = {};
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) {
+      const info = gl.getActiveUniform(p, i);
+      u[info.name.replace("[0]", "")] = gl.getUniformLocation(p, info.name);
+    }
+    return { prog: p, u };
+  }
+
+  // ---------- 全屏三角形带 ----------
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // ---------- Pass 定义（Buffer A 场景 -> Image 绘画） ----------
+  const EMBEDDED = {
+    "Buffer A": document.getElementById("shader-bufferA").textContent,
+    "Image": document.getElementById("shader-image").textContent,
+  };
+
+  const passDefs = [
+    { name: "Buffer A", file: "bufferA.frag", toScreen: false, channels: [null, null, null, null] },
+    { name: "Image",    file: "image.frag",   toScreen: true,  channels: ["Buffer A", null, null, null] },
+  ];
+
+  // 优先从磁盘读取 .frag 文件（通过 http 打开时），file:// 下回退到内嵌副本
+  async function loadUserCode() {
+    const out = {};
+    for (const d of passDefs) {
+      let src = EMBEDDED[d.name];
+      try {
+        const r = await fetch(d.file, { cache: "no-store" });
+        if (r.ok) src = await r.text();
+      } catch (e) { /* file:// 下忽略，用内嵌副本 */ }
+      out[d.name] = src;
+    }
+    return out;
+  }
+
+  // ---------- Buffer A 的乒乓渲染目标 ----------
+  const RT = {};
+  function allocTargets(name) {
+    if (RT[name]) for (const k of ["0", "1"]) {
+      gl.deleteTexture(RT[name][k].tex); gl.deleteFramebuffer(RT[name][k].fbo);
+    }
+    const t = {};
+    for (const k of [0, 1]) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0,
+                    gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      t[k] = { tex, fbo };
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RT[name] = t;
+  }
+
+  // ---------- 状态 ----------
+  const selRes = document.getElementById("selRes");
+  const btnPause = document.getElementById("btnPause");
+  let simTime = 0, lastNow = 0, frame = 0, ping = 0, paused = false;
+  let passes = null;
+  let fpsAvg = 0;
+  const mouse = [0, 0, 0, 0];
+  let dragging = false;
+
+  // ---------- 可调参数 ----------
+  const PARAMS = [
+    ["uDensity",  "线条密度", 0.3, 3.0, 0.05, 1.0],
+    ["uWidth",    "线条粗细", 0.3, 3.0, 0.05, 1.0],
+    ["uWobble",   "线条抖动", 0.0, 2.5, 0.05, 1.0],
+    ["uInk",      "线条深浅", 0.0, 2.0, 0.05, 1.0],
+    ["uDash",     "断笔",     0.0, 1.0, 0.02, 1.0],
+    ["uCross",    "交错线",   0.0, 2.0, 0.05, 1.0],
+    ["uDrift",    "线条移动", 0.0, 4.0, 0.05, 1.0],
+    ["uWarp",     "纸面扰动", 0.0, 2.5, 0.05, 1.0],
+    ["uFigSize",  "人形大小", 0.4, 1.6, 0.02, 1.0],
+    ["uBody",     "人形排线", 0.4, 2.2, 0.05, 1.0],
+    ["uWrap",     "包裹层",   0.0, 2.0, 0.05, 1.0],
+  ];
+  const param = {};
+  PARAMS.forEach(p => param[p[0]] = p[5]);
+  const slidersEl = document.getElementById("sliders");
+  PARAMS.forEach(([name, label, min, max, step, def]) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const lab = document.createElement("span");
+    lab.textContent = label;
+    const val = document.createElement("span");
+    val.className = "v";
+    val.textContent = def;
+    row.append(lab, val);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = min; input.max = max; input.step = step; input.value = def;
+    input.addEventListener("input", () => {
+      param[name] = parseFloat(input.value);
+      val.textContent = input.value;
+    });
+    slidersEl.append(row, input);
+  });
+  document.getElementById("btnPanel").addEventListener("click", () =>
+    document.getElementById("panel").classList.toggle("hidden"));
+
+  function resize() {
+    const scale = parseFloat(selRes.value);
+    const w = Math.max(1, Math.round(canvas.clientWidth * scale));
+    const h = Math.max(1, Math.round(canvas.clientHeight * scale));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w; canvas.height = h;
+      for (const d of passDefs) if (!d.toScreen) allocTargets(d.name);
+    }
+  }
+
+  function restart() {
+    simTime = 0; frame = 0; ping = 0;
+    for (const d of passDefs) if (!d.toScreen) allocTargets(d.name);
+  }
+
+  function setUnif(p, name, setter) { if (p.u[name]) setter(p.u[name]); }
+
+  function render(dt) {
+    resize();
+    const w = canvas.width, h = canvas.height;
+    const d = new Date();
+    const date = [d.getFullYear(), d.getMonth() + 1, d.getDate(),
+                  d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000];
+
+    for (const p of passes) {
+      if (!p.toScreen) {
+        const target = RT[p.name][1 - ping];
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+      } else {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(p.prog);
+
+      p.channels.forEach((ch, ci) => {
+        gl.activeTexture(gl.TEXTURE0 + ci);
+        let tex = null;
+        if (ch) tex = RT[ch][ping].tex;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        if (p.u["iChannel" + ci]) gl.uniform1i(p.u["iChannel" + ci], ci);
+      });
+
+      setUnif(p, "iResolution", loc => gl.uniform3f(loc, w, h, w / h));
+      setUnif(p, "iTime", loc => gl.uniform1f(loc, simTime));
+      setUnif(p, "iTimeDelta", loc => gl.uniform1f(loc, Math.min(dt, 0.1)));
+      setUnif(p, "iFrame", loc => gl.uniform1i(loc, frame));
+      setUnif(p, "iFrameRate", loc => gl.uniform1f(loc, fpsAvg || 60));
+      setUnif(p, "iMouse", loc => gl.uniform4f(loc, mouse[0], mouse[1], mouse[2], mouse[3]));
+      setUnif(p, "iDate", loc => gl.uniform4f(loc, date[0], date[1], date[2], date[3]));
+      setUnif(p, "iSampleRate", loc => gl.uniform1f(loc, 44100));
+      setUnif(p, "iChannelResolution", loc =>
+        gl.uniform3fv(loc, new Float32Array(12)));
+      setUnif(p, "iChannelTime", loc => gl.uniform1fv(loc, new Float32Array(4)));
+      for (const [name] of PARAMS) setUnif(p, name, loc => gl.uniform1f(loc, param[name]));
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    ping = 1 - ping;
+    frame++;
+  }
+
+  function tick(now) {
+    try {
+      const dt = lastNow ? (now - lastNow) / 1000 : 0;
+      lastNow = now;
+      if (dt > 0) fpsAvg = fpsAvg ? fpsAvg * 0.95 + (1 / Math.max(dt, 1e-4)) * 0.05 : 1 / Math.max(dt, 1e-4);
+      if (!paused) simTime += dt;
+      render(dt);
+    } catch (e) {
+      window.__pageError = (e && (e.message + "\n" + e.stack)) || String(e);
+    }
+    statEl.textContent = paused ? "已暂停" :
+      Math.round(canvas.width) + "×" + Math.round(canvas.height) + " · " + Math.round(fpsAvg) + " FPS";
+    window.__status = { ok: true, hidden: document.hidden, paused, w: canvas.width, h: canvas.height,
+      fps: Math.round(fpsAvg), frame, error: window.__pageError || null };
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- 交互 ----------
+  function updMouse(e, down) {
+    const r = canvas.getBoundingClientRect();
+    const sx = canvas.width / r.width, sy = canvas.height / r.height;
+    const px = (e.clientX - r.left) * sx;
+    const py = (r.bottom - e.clientY) * sy;   // Shadertoy 用左下角为原点
+    mouse[0] = px; mouse[1] = py;
+    if (down) { mouse[2] = px; mouse[3] = py; }
+  }
+  canvas.addEventListener("mousedown", e => { dragging = true; updMouse(e, true); });
+  window.addEventListener("mousemove", e => { if (dragging) updMouse(e, true); });
+  window.addEventListener("mouseup", () => {
+    if (dragging) { dragging = false; mouse[2] = -Math.abs(mouse[2]); mouse[3] = -Math.abs(mouse[3]); }
+  });
+
+  function togglePause() {
+    paused = !paused;
+    btnPause.textContent = paused ? "继续（空格）" : "暂停（空格）";
+  }
+  btnPause.addEventListener("click", togglePause);
+  document.getElementById("btnRestart").addEventListener("click", restart);
+  document.getElementById("btnFull").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+  selRes.addEventListener("change", resize);
+  window.addEventListener("keydown", e => {
+    if (e.code === "Space") { e.preventDefault(); togglePause(); }
+    if (e.code === "KeyR") restart();
+  });
+
+  // ---------- 启动 ----------
+  loadUserCode().then(src => {
+    for (const d of passDefs) {
+      const built = buildProgram(fragSource(src[d.name]), d.name);
+      d.prog = built.prog; d.u = built.u;
+    }
+    passes = passDefs;
+    resize();
+    restart();
+    window.__started = true;
+    requestAnimationFrame(tick);
+  }).catch(e => {
+    window.__pageError = String(e && e.stack || e);
+    fatal("初始化失败: " + (e && e.message || e));
+  });
+})();
+</script>
+</body>
+</html>

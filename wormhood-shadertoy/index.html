@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wormhood - 本地复刻 (Shadertoy MdcSRj)</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  #hud {
+    position: fixed; left: 12px; bottom: 10px;
+    font: 12px/1.6 Consolas, Menlo, monospace;
+    color: rgba(255,255,255,0.75);
+    text-shadow: 0 1px 2px #000;
+    pointer-events: none; user-select: none;
+  }
+  #hud b { color: #fff; }
+
+  /* ---- 可拖动参数面板 ---- */
+  #panel {
+    position: fixed; top: 16px; right: 16px; width: 300px;
+    background: rgba(20, 20, 26, 0.88);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: #ddd;
+    font: 12px/1.4 Consolas, Menlo, monospace;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    user-select: none;
+    z-index: 10;
+  }
+  #panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 8px 8px 0 0;
+    cursor: grab;
+    font-weight: bold; color: #fff;
+  }
+  #panel-header:active { cursor: grabbing; }
+  #panel-toggle {
+    background: none; border: none; color: #aaa;
+    font: bold 14px Consolas, monospace; cursor: pointer; padding: 2px 6px;
+  }
+  #panel-toggle:hover { color: #fff; }
+  #panel-body { padding: 6px 12px 10px; max-height: 72vh; overflow-y: auto; }
+  #panel.collapsed #panel-body { display: none; }
+  .row { display: flex; align-items: center; margin: 5px 0; gap: 8px; }
+  .row label { flex: 0 0 78px; color: #bbb; }
+  .row input[type=range] { flex: 1; height: 4px; accent-color: #e8a04c; cursor: pointer; }
+  .row .val { flex: 0 0 40px; text-align: right; color: #e8a04c; }
+  .row input[type=color] {
+    flex: 1; height: 22px; padding: 0; border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px; background: none; cursor: pointer;
+  }
+  #panel-footer { padding: 4px 12px 10px; }
+  #panel-reset {
+    width: 100%; padding: 5px 0;
+    background: rgba(255,255,255,0.08); color: #ccc;
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 5px;
+    font: 12px Consolas, monospace; cursor: pointer;
+  }
+  #panel-reset:hover { background: rgba(255,255,255,0.16); color: #fff; }
+  #panel.collapsed #panel-footer { display: none; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="hud">
+  <b>Wormhood</b> · 作者 finalman · 来源
+  <a style="color:#8cf" href="https://www.shadertoy.com/view/MdcSRj">shadertoy.com/view/MdcSRj</a><br>
+  拖动鼠标照亮画面 · 空格暂停 · R 重置时间 · F 全屏 · 右上角面板可实时调参
+</div>
+
+<div id="panel">
+  <div id="panel-header"><span>⚙ 参数调节</span><button id="panel-toggle">−</button></div>
+  <div id="panel-body"></div>
+  <div id="panel-footer" style="display:flex; gap:8px;">
+    <button id="panel-reset" style="flex:1;">恢复默认</button>
+    <button id="panel-original" style="flex:1; width:auto; padding:5px 0; background:rgba(255,255,255,0.08); color:#ccc; border:1px solid rgba(255,255,255,0.15); border-radius:5px; font:12px Consolas, monospace; cursor:pointer;">原版画风</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ============================================================
+// Shader 源码:取自 https://www.shadertoy.com/view/MdcSRj
+// 作者 finalman("Wormhood"),仅作本地学习复刻用途。
+// 说明:原代码中的常量已改为 uniform 以便面板实时调节,
+//       所有默认值与原版行为一致(原版 iChannel0 为空,采样恒为 0)。
+// ============================================================
+const FRAGMENT_SHADER = `const int MAX_STEPS_CAP = 300;   // 步数硬上限
+const int MAX_SPHERES_CAP = 24;   // 球数硬上限
+
+float sphere(vec3 pos, float radius, vec3 smpl)
+{
+    return length(pos - smpl) - radius;
+}
+
+float plane(vec3 dir, float offset, vec3 smpl)
+{
+    return dot(dir, smpl) + offset;
+}
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+// 二维值噪声:格点随机值 + 平滑插值,用于无序壁面起伏
+float vnoise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// 空间折叠:管道壁波动 + 周期平铺(seg 为当前管道段编号)
+void foldSpace(inout vec3 smpl, out float seg)
+{
+    float T1 = uTunnel;
+    float T2 = 2.0 * T1;
+    float tt = iTime * uWaveSpeed;
+
+    smpl.y += uWaveAmp * ( sin(smpl.z * 0.2 + tt) * sin(tt * 1.33)
+             + sin(smpl.x * 0.3 + tt) * sin(tt * 3.22)
+             + sin(smpl.x * 0.5 + smpl.z * 0.22 + tt) * sin(tt * 2.22 + smpl.z * 0.1) );
+    seg = floor((smpl.z + T1) / T2);
+    smpl.x += seg * 7.0;
+    smpl.xz = mod(smpl.xz + T1, T2) - T1;
+}
+
+// 蠕虫(球体链)的距离
+float dfWorms(vec3 smpl)
+{
+    float seg;
+    foldSpace(smpl, seg);
+
+    float result = 10000.0;
+
+    for (int i = 0; i < MAX_SPHERES_CAP; i++)
+    {
+        if (float(i) >= uWormCount) break;
+        float t = float(i) / uWormCount;
+        float n = t + iTime * uWormSpeed + seg * 0.5;
+        vec3 pos = vec3(sin(n * 5.0 * uFreq) * uAmpX,
+                        cos(n * 3.0 * uFreq) * uAmpY,
+                        cos(n * 2.0 * uFreq) * uAmpZ + 5.0);
+        float radius = uWormRadius * (1.0 + uRadiusWave * sin(t * 30.0));
+        result = min(result, sphere(pos, radius, smpl));
+    }
+
+    return result;
+}
+
+// 场景距离:虫子与上下管道壁取较近者
+// 壁面 = 蹦床弹跳(不对称谐波:快压下、慢回弹)+ 少量噪声细节;
+// 弹跳相位由噪声决定,各区域错开、此起彼伏
+float dfScene(vec3 smpl)
+{
+    float result = dfWorms(smpl);
+    float squeeze = 1.0 + uSqueeze * sin(smpl.z * 0.35 + iTime * 1.5);
+    float phase = vnoise(vec2(smpl.z * uRippleFreq * 0.25,
+                              smpl.x * uRippleFreq * 0.40)) * 6.2831;
+    float x = iTime * uRippleSpeed + phase;
+    float bounce = sin(x) + 0.45 * sin(2.0 * x + 1.7) + 0.22 * sin(3.0 * x + 4.2);
+    float ripple = uRippleAmp * ( 0.9 * bounce
+        + 0.3 * (vnoise(vec2(smpl.z * uRippleFreq * 0.9 - iTime * 0.4,
+                             smpl.x * uRippleFreq * 1.3)) - 0.5) );
+    result = min(result, plane(vec3(0, -1, 0), 10.0 * squeeze - ripple, smpl));
+    result = min(result, plane(vec3(0, 1, 0), 10.0 * squeeze - ripple, smpl));
+    return result;
+}
+
+vec3 dfNormal(vec3 smpl)
+{
+    const float E = 0.04;
+
+    float d0 = dfScene(smpl);
+    float dX = dfScene(smpl + vec3(E, 0, 0));
+    float dY = dfScene(smpl + vec3(0, E, 0));
+    float dZ = dfScene(smpl + vec3(0, 0, E));
+
+    return normalize(vec3(dX - d0, dY - d0, dZ - d0));
+}
+
+float dfOcclusion(vec3 smpl, vec3 normal)
+{
+    float N = 1.0;
+    return clamp(dfScene(smpl + normal * N) / N, 0.0, 1.0);
+}
+
+// 距离-透明度曲线:近距离缓慢消失,中距(最清晰距离处)最实,远距淡入雾中
+float distAlpha(float d)
+{
+    float t = clamp(d / max(uFadeNear, 0.001), 0.0, 1.0);
+    float nearA = t * t * (3.0 - 2.0 * t);                       // 0 → 1(近处缓慢淡入)
+    float f = clamp((d - uPeakDist) / max(uFadeFar - uPeakDist, 0.001), 0.0, 1.0);
+    float farA = 1.0 - f * f * (3.0 - 2.0 * f);                  // 1 → 0(远处淡出)
+    return nearA * farA;
+}
+
+// 原版配色:漫反射 + 环境光 + 表面辉光
+vec3 shadeSurface(vec3 normal, float occ, float steps)
+{
+    vec3 diffuse = vec3(0.4, 0.5, 0.6) * dot(normal, normalize(vec3(1.0, 0.3, -1.0)));
+    vec3 ambient = vec3(0.4, 0.2, 0.1);
+    return (ambient + diffuse) * vec3(1.0 - steps) + pow(1.0 - occ, 1.5) * uGlowColor * uGlow;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec3 opos = vec3(4.5, sin(iTime * 0.4) * uCamBob + 2.0, -7.0 + iTime * uCamSpeed);
+    // 手持镜头式晃动(多频正弦叠加,避免机械感)
+    opos.xy += uJitter * 0.35 * vec2(sin(iTime * 13.7) + sin(iTime * 7.3),
+                                     cos(iTime * 11.1) + sin(iTime * 5.9));
+    vec3 pos = opos;
+    vec3 dir = normalize(vec3((fragCoord.x - iResolution.x * 0.5) / iResolution.y, fragCoord.y / iResolution.y - 0.5, 1.0));
+    vec3 normal;
+
+    vec3 acc = vec3(0.0);   // 透明虫子层的颜色累计
+    float trans = 1.0;      // 剩余透过率
+    vec3 bg = uFogColor;    // 不透明背景(管道壁或雾)
+
+    for (int i = 0; i < MAX_STEPS_CAP; i++)
+    {
+        if (i >= uMaxSteps) break;
+        float dw = dfWorms(pos);
+        float dp = min(plane(vec3(0, -1, 0), 10.0, pos), plane(vec3(0, 1, 0), 10.0, pos));
+        float d = min(dw, dp);
+
+        if (d < 0.001)
+        {
+            float steps = float(i) / float(uMaxSteps);
+            if (dw < dp)
+            {
+                // 命中虫子:按距离曲线与基础透明度累计颜色,然后继续穿透
+                float a = uWormAlpha * distAlpha(distance(pos, opos));
+                if (a > 0.01)
+                {
+                    normal = dfNormal(pos);
+                    float occ = dfOcclusion(pos, normal);
+                    float steps = float(i) / float(uMaxSteps);
+                    acc += shadeSurface(normal, occ, steps) * a * trans;
+                    trans *= 1.0 - a;
+                }
+                if (trans < 0.02) break;   // 后面已不可见
+                // 步进穿过当前球体,直到离开其表面
+                for (int j = 0; j < 160; j++)
+                {
+                    pos += dir * 0.06;
+                    if (dfWorms(pos) > 0.01) break;
+                }
+            }
+            else
+            {
+                // 命中管道壁:不透明背景
+                normal = dfNormal(pos);
+                float occ = dfOcclusion(pos, normal);
+                bg = shadeSurface(normal, occ, steps);
+                break;
+            }
+        }
+        pos += d * dir * 0.9;   // 略保守的步长,防止涟漪幅度大时穿过壁面
+    }
+
+    vec3 color = acc + bg * trans;
+    float fogAmt = 1.0 - exp(-distance(opos, pos) * uFogDensity);
+    color = mix(color, uFogColor, fogAmt);
+    color = (1.0 - exp(-color * 1.5)) * 1.3;
+    // 饱和度:0=灰度,1=原始,>1 增饱和
+    float grey = dot(color, vec3(0.299, 0.587, 0.114));
+    color = mix(vec3(grey), color, uSaturation);
+    // 信号干扰:噪点 + 偶发的整帧压暗闪烁
+    color += (hash(fragCoord + fract(iTime) * 137.0) - 0.5) * uGlitch;
+    color *= 1.0 - uGlitch * 0.6 * step(0.72, hash(vec2(floor(iTime * 8.0), 3.0)));
+    // 手电筒:画面压黑,仅鼠标附近的光圈内可见。
+    // 边缘由动态噪声扰动(不规则、缓慢蠕动),亮心略过曝,光照内叠颗粒闪烁
+    float ld = distance(fragCoord, uLightPos) / iResolution.y;
+    ld += (vnoise(vec2(fragCoord.x, fragCoord.y) * (4.0 / iResolution.y)
+                     + vec2(iTime * 0.35, -iTime * 0.22)) - 0.5)
+          * uLightRadius * uLightSoft * 0.9;
+    float vis = 1.0 - uDarkness * smoothstep(uLightRadius * (1.0 - uLightSoft), uLightRadius, ld);
+    vis *= 1.0 + 0.25 * (1.0 - smoothstep(0.0, max(uLightRadius * 0.5, 0.001), ld)); // 亮心
+    float grain = vnoise(fragCoord * (150.0 / iResolution.y)
+                         + vec2(fract(iTime * 7.0) * 43.0, fract(iTime * 5.3) * 29.0)) - 0.5;
+    color *= vis * (1.0 + uGrain * grain * 2.0);
+    fragColor = vec4(color, 1.0);
+}`;
+
+const VERTEX_SHADER = `#version 300 es
+in vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+// Shadertoy(WebGL2 / #version 300 es)运行时包装:
+// 提供 iXxx(Shadertoy 标准)与 uXxx(面板自定义)两组 uniforms
+const FRAG_WRAPPER = `#version 300 es
+precision highp float;
+precision highp int;
+uniform vec3  iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform float iFrameRate;
+uniform int   iFrame;
+uniform vec4  iMouse;
+uniform vec4  iDate;
+uniform float iSampleRate;
+uniform vec3  iChannelResolution[4];
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+// ---- 面板可调参数 ----
+uniform float uWormSpeed;     // 蠕虫游动速度    (原版 0.25)
+uniform float uWormCount;     // 蠕虫球体数量    (原版 12)
+uniform float uWormRadius;    // 球体半径        (原版 1.4)
+uniform float uWormAlpha;     // 虫子表面不透明度 (原版 1,即不透明)
+uniform float uFadeNear;      // 近距消失半径:此距离内虫子渐隐(0=关闭)
+uniform float uPeakDist;      // 最清晰距离:此处虫子最实
+uniform float uFadeFar;       // 远距淡出:超过最清晰距离后渐隐的终点
+uniform float uRadiusWave;    // 身体粗细波动    (原版 0,无波动)
+uniform float uFreq;          // 摆动频率倍率    (原版 1)
+uniform float uAmpX;          // 横向摆幅        (原版 5)
+uniform float uAmpY;          // 纵向摆幅        (原版 9)
+uniform float uAmpZ;          // 深度摆幅        (原版 3)
+uniform float uCamSpeed;      // 相机前进速度    (原版 3)
+uniform float uCamBob;        // 相机起伏幅度    (原版 3)
+uniform float uTunnel;        // 管道粗细周期    (原版 10)
+uniform int   uMaxSteps;      // 光线步进步数    (原版 200)
+uniform float uFogDensity;    // 雾浓度          (原版 0.01)
+uniform vec3  uFogColor;      // 雾颜色          (原版 0.2,0.14,0.18)
+uniform float uGlow;          // 辉光强度        (原版 0.8)
+uniform vec3  uGlowColor;     // 辉光颜色        (原版 1,0.9,0.8)
+uniform float uWaveAmp;       // 管壁波动幅度    (原版 1)
+uniform float uWaveSpeed;     // 管壁波动速度    (原版 1)
+uniform float uSqueeze;       // 管腔蠕动挤压    (原版 0)
+uniform float uRippleAmp;     // 壁面涟漪幅度    (原版 0)
+uniform float uRippleFreq;    // 涟漪密度        (本版默认 0.8)
+uniform float uRippleSpeed;   // 涟漪传播速度    (本版默认 2.5)
+uniform float uJitter;        // 镜头晃动        (原版 0)
+uniform float uGlitch;        // 信号干扰        (原版 0)
+uniform float uSaturation;    // 整体饱和度      (原版 1)
+uniform vec2  uLightPos;      // 手电筒光圈中心(像素坐标,y 向上)
+uniform float uLightRadius;   // 光圈半径(相对屏高,0=几乎全暗)
+uniform float uLightSoft;     // 光圈边缘渐变带宽度比例
+uniform float uDarkness;      // 光圈外黑暗程度(1=纯黑)
+uniform float uGrain;         // 光照颗粒闪烁强度
+out vec4 outColor;
+#line 1
+${FRAGMENT_SHADER}
+void main() {
+  vec4 o = vec4(0.0);
+  mainImage(o, gl_FragCoord.xy);
+  outColor = o;
+}`;
+
+// ================= 参数定义(滑块/颜色面板数据源) =================
+const PARAMS = [
+  { key: "uWormSpeed",  label: "游动速度", type: "range", min: 0,    max: 1,     step: 0.01,  def: 0.45 },
+  { key: "uWormCount",  label: "球体数量", type: "range", min: 1,    max: 24,    step: 1,     def: 18 },
+  { key: "uWormRadius", label: "身体半径", type: "range", min: 0.5,  max: 4,     step: 0.05,  def: 1.4 },
+  { key: "uWormAlpha",  label: "虫子透明度", type: "range", min: 0,    max: 1,     step: 0.01,  def: 0.55 },
+  { key: "uFadeNear",   label: "近距消失", type: "range", min: 0,    max: 15,    step: 0.1,   def: 6 },
+  { key: "uPeakDist",   label: "最清晰距离", type: "range", min: 2,    max: 30,    step: 0.5,   def: 12 },
+  { key: "uFadeFar",    label: "远距淡出", type: "range", min: 10,   max: 80,    step: 1,     def: 60 },
+  { key: "uRadiusWave", label: "粗细波动", type: "range", min: 0,    max: 1,     step: 0.01,  def: 0 },
+  { key: "uFreq",       label: "摆动频率", type: "range", min: 0.2,  max: 3,     step: 0.05,  def: 1 },
+  { key: "uAmpX",       label: "横向摆幅", type: "range", min: 0,    max: 10,    step: 0.1,   def: 5 },
+  { key: "uAmpY",       label: "纵向摆幅", type: "range", min: 0,    max: 12,    step: 0.1,   def: 9 },
+  { key: "uAmpZ",       label: "深度摆幅", type: "range", min: 0,    max: 8,     step: 0.1,   def: 3 },
+  { key: "uCamSpeed",   label: "前进速度", type: "range", min: 0,    max: 8,     step: 0.1,   def: 3 },
+  { key: "uCamBob",     label: "起伏幅度", type: "range", min: 0,    max: 6,     step: 0.1,   def: 2.5 },
+  { key: "uTunnel",     label: "管道粗细", type: "range", min: 4,    max: 20,    step: 0.5,   def: 10 },
+  { key: "uWaveAmp",    label: "波动幅度", type: "range", min: 0,    max: 3,     step: 0.05,  def: 1.3 },
+  { key: "uWaveSpeed",  label: "波动速度", type: "range", min: 0,    max: 3,     step: 0.05,  def: 2.2 },
+  { key: "uSqueeze",    label: "管腔挤压", type: "range", min: 0,    max: 0.3,   step: 0.01,  def: 0.15 },
+  { key: "uRippleAmp",  label: "壁面涟漪", type: "range", min: 0,    max: 1.5,   step: 0.05,  def: 1.1 },
+  { key: "uRippleFreq", label: "涟漪密度", type: "range", min: 0.15, max: 2,     step: 0.05,  def: 0.7 },
+  { key: "uRippleSpeed", label: "涟漪速度", type: "range", min: 0,    max: 6,     step: 0.1,   def: 4 },
+  { key: "uMaxSteps",   label: "渲染步数", type: "range", min: 32,   max: 300,   step: 1,     def: 200 },
+  { key: "uFogDensity", label: "雾浓度",   type: "range", min: 0,    max: 0.05,  step: 0.001, def: 0.028 },
+  { key: "uGlow",       label: "辉光强度", type: "range", min: 0,    max: 2,     step: 0.05,  def: 1.2 },
+  { key: "uJitter",     label: "镜头晃动", type: "range", min: 0,    max: 2,     step: 0.05,  def: 0.6 },
+  { key: "uGlitch",     label: "信号干扰", type: "range", min: 0,    max: 1,     step: 0.01,  def: 0.12 },
+  { key: "uLightRadius", label: "光圈半径", type: "range", min: 0,    max: 2.5,   step: 0.01,  def: 0.28 },
+  { key: "uLightSoft",  label: "边缘柔化", type: "range", min: 0.02, max: 1,     step: 0.01,  def: 0.5 },
+  { key: "uDarkness",   label: "黑暗程度", type: "range", min: 0,    max: 1,     step: 0.01,  def: 1 },
+  { key: "uGrain",      label: "光照颗粒", type: "range", min: 0,    max: 0.5,   step: 0.01,  def: 0.2 },
+  { key: "uFogColor",   label: "雾颜色",   type: "color", def: [0.13, 0.09, 0.15] },
+  { key: "uGlowColor",  label: "辉光颜色", type: "color", def: [0.72, 1.0, 0.85] },
+  { key: "uSaturation", label: "饱和度",   type: "range", min: 0,    max: 2,     step: 0.01,  def: 0.45 },
+];
+const values = {};   // key -> { float | [r,g,b] }
+PARAMS.forEach(p => { values[p.key] = Array.isArray(p.def) ? p.def.slice() : p.def; });
+
+const canvas = document.getElementById("glcanvas");
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) {
+  document.body.innerHTML = "<p style='color:#fff;font:16px sans-serif;padding:2em'>此浏览器不支持 WebGL2,无法运行 Shadertoy 风格着色器。</p>";
+  throw new Error("WebGL2 not supported");
+}
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh);
+    console.error(log, src.split("\n").map((l, i) => (i + 1) + ": " + l).join("\n"));
+    document.body.insertAdjacentHTML("beforeend",
+      "<pre style='color:#f88;font:12px monospace;padding:1em;white-space:pre-wrap'>Shader 编译失败:\n" + log + "</pre>");
+    throw new Error(log);
+  }
+  return sh;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERTEX_SHADER));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_WRAPPER));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+// 全屏三角形
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, "aPos");
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+// iChannel0:原版此通道未配置任何输入,Shadertoy 中空通道采样返回黑色。
+// 用 1x1 黑色纹理保持行为一致。
+function makeBlackTexture() {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+    new Uint8Array([0, 0, 0, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+const blackTex = makeBlackTexture();
+gl.uniform1i(gl.getUniformLocation(prog, "iChannel0"), 0);
+gl.uniform1i(gl.getUniformLocation(prog, "iChannel1"), 1);
+gl.uniform1i(gl.getUniformLocation(prog, "iChannel2"), 2);
+gl.uniform1i(gl.getUniformLocation(prog, "iChannel3"), 3);
+
+const U = {};
+for (const n of ["iResolution", "iTime", "iTimeDelta", "iFrameRate", "iFrame", "iMouse", "iDate", "iSampleRate"]) {
+  U[n] = gl.getUniformLocation(prog, n);
+}
+U.iChannelResolution = gl.getUniformLocation(prog, "iChannelResolution");
+U.uLightPos = gl.getUniformLocation(prog, "uLightPos");
+PARAMS.forEach(p => { U[p.key] = gl.getUniformLocation(prog, p.key); });
+
+// ================= 参数面板构建 =================
+const panelBody = document.getElementById("panel-body");
+function fmt(v, step) {
+  const d = step < 0.01 ? 3 : (step < 0.1 ? 2 : 0);
+  return Number(v).toFixed(d);
+}
+function rgbToHex(rgb) {
+  return "#" + rgb.map(c => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
+}
+function hexToRgb(hex) {
+  return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+}
+const controls = {};   // key -> { input, valEl }
+PARAMS.forEach(p => {
+  const row = document.createElement("div");
+  row.className = "row";
+  const label = document.createElement("label");
+  label.textContent = p.label;
+  row.appendChild(label);
+  if (p.type === "range") {
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = p.min; input.max = p.max; input.step = p.step; input.value = p.def;
+    const val = document.createElement("span");
+    val.className = "val";
+    val.textContent = fmt(p.def, p.step);
+    input.addEventListener("input", () => {
+      values[p.key] = parseFloat(input.value);
+      val.textContent = fmt(input.value, p.step);
+    });
+    row.appendChild(input);
+    row.appendChild(val);
+    controls[p.key] = { input, valEl: val };
+  } else {
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = rgbToHex(p.def);
+    input.addEventListener("input", () => { values[p.key] = hexToRgb(input.value); });
+    row.appendChild(input);
+    controls[p.key] = { input };
+  }
+  panelBody.appendChild(row);
+});
+
+// 预设:未提供的参数回落到默认值
+function applyPreset(vals) {
+  PARAMS.forEach(p => {
+    const v = (p.key in vals) ? vals[p.key] : p.def;
+    values[p.key] = Array.isArray(v) ? v.slice() : v;
+    const c = controls[p.key];
+    if (p.type === "range") {
+      c.input.value = v;
+      c.valEl.textContent = fmt(v, p.step);
+    } else {
+      c.input.value = rgbToHex(v);
+    }
+  });
+}
+
+// "原版画风":忠实还原 Shadertoy 原作(MdcSRj)的观感——
+// 无涟漪/挤压/晃动/干扰,虫子不透明、无距离渐隐、无手电筒、原版色彩
+const PRESET_ORIGINAL = {
+  uWormSpeed: 0.25, uWormCount: 12, uWormAlpha: 1, uFadeNear: 0,
+  uWaveAmp: 1, uWaveSpeed: 1, uSqueeze: 0,
+  uRippleAmp: 0, uRippleSpeed: 3,
+  uFogDensity: 0.01, uFogColor: [0.2, 0.14, 0.18],
+  uGlow: 0.8, uGlowColor: [1.0, 0.9, 0.8],
+  uJitter: 0, uGlitch: 0, uCamBob: 3,
+  uLightRadius: 0.35, uLightSoft: 0.45, uDarkness: 0, uGrain: 0,
+  uSaturation: 1,
+};
+document.getElementById("panel-reset").addEventListener("click", () => applyPreset({}));
+document.getElementById("panel-original").addEventListener("click", () => applyPreset(PRESET_ORIGINAL));
+
+// 面板折叠
+const panel = document.getElementById("panel");
+const toggle = document.getElementById("panel-toggle");
+toggle.addEventListener("click", () => {
+  panel.classList.toggle("collapsed");
+  toggle.textContent = panel.classList.contains("collapsed") ? "+" : "−";
+});
+
+// 面板拖动(按住标题栏)
+const header = document.getElementById("panel-header");
+let drag = null;
+header.addEventListener("pointerdown", (e) => {
+  if (e.target === toggle) return;
+  const r = panel.getBoundingClientRect();
+  drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+  header.setPointerCapture(e.pointerId);
+});
+header.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  panel.style.left = (e.clientX - drag.dx) + "px";
+  panel.style.top = (e.clientY - drag.dy) + "px";
+  panel.style.right = "auto";
+});
+header.addEventListener("pointerup", () => { drag = null; });
+
+// ---- Shadertoy 风格 iMouse:xy=当前/最后位置, zw=最近一次按下位置(按下期间>0) ----
+const mouse = { x: 0, y: 0, z: 0, w: 0, down: false };
+// 手电筒光圈中心:初始为画面中心,跟随鼠标移动
+const light = { x: 0, y: 0 };
+function updateMouse(e) {
+  const r = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  mouse.x = (e.clientX - r.left) * dpr;
+  mouse.y = canvas.height - (e.clientY - r.top) * dpr; // Shadertoy y 轴向上
+  light.x = mouse.x;
+  light.y = mouse.y;
+}
+canvas.addEventListener("mousedown", (e) => { updateMouse(e); mouse.down = true; mouse.z = mouse.x; mouse.w = mouse.y; });
+canvas.addEventListener("mousemove", updateMouse);
+window.addEventListener("mouseup", () => { mouse.down = false; mouse.z = -mouse.z; mouse.w = -mouse.w; });
+
+// ---- 时间控制 ----
+let paused = false;
+let tOffset = 0;
+let tResume = 0;
+let frame = 0;
+let start = performance.now();
+function shaderTime() { return (performance.now() - start) / 1000 + tOffset; }
+addEventListener("keydown", (e) => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!paused) { paused = true; tResume = shaderTime(); }
+    else { paused = false; tOffset += tResume - shaderTime(); } // 扣除暂停期间流逝的真实时间
+  } else if (e.key === "r" || e.key === "R") {
+    start = performance.now(); tOffset = 0; tResume = 0; lastT = 0; frame = 0;
+  } else if (e.key === "f" || e.key === "F") {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+});
+
+const hud = document.getElementById("hud");
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(canvas.clientWidth * dpr);
+  const h = Math.floor(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    if (light.x === 0 && light.y === 0) { light.x = w / 2; light.y = h / 2; } // 光圈初始在画面中心
+  }
+}
+resize();
+addEventListener("resize", resize);
+
+let lastT = 0;
+function render(now) {
+  resize();
+  const t = paused ? tResume : shaderTime();
+  const dt = Math.min(t - lastT, 1 / 30);
+  lastT = t;
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, blackTex);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, blackTex);
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, blackTex);
+  gl.activeTexture(gl.TEXTURE3);
+  gl.bindTexture(gl.TEXTURE_2D, blackTex);
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform3f(U.iResolution, canvas.width, canvas.height, 1);
+  gl.uniform1f(U.iTime, t);
+  gl.uniform1f(U.iTimeDelta, dt);
+  gl.uniform1f(U.iFrameRate, dt > 0 ? 1 / dt : 60);
+  gl.uniform1i(U.iFrame, frame++);
+  gl.uniform4f(U.iMouse, mouse.x, mouse.y, mouse.z, mouse.w);
+  const d = new Date();
+  gl.uniform4f(U.iDate, d.getFullYear(), d.getMonth() + 1, d.getDate(),
+    d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000);
+  gl.uniform1f(U.iSampleRate, 44100);
+  for (let i = 0; i < 4; i++) {
+    gl.uniform3f(U.iChannelResolution, 1, 1, 1);
+  }
+
+  // 上传面板参数
+  for (const p of PARAMS) {
+    if (p.type === "range") {
+      if (p.key === "uMaxSteps") gl.uniform1i(U[p.key], Math.round(values[p.key]));
+      else gl.uniform1f(U[p.key], values[p.key]);
+    } else {
+      const c = values[p.key];
+      gl.uniform3f(U[p.key], c[0], c[1], c[2]);
+    }
+  }
+  gl.uniform2f(U.uLightPos, light.x, light.y);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

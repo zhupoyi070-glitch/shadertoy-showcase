@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>不安爬行 · 丛生根须（炭笔）</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
+    font-family: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei", sans-serif; }
+  #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    touch-action: none; }
+  #hud { position: fixed; left: 14px; top: 12px; color: #cfd3dc; user-select: none;
+    pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.9); line-height: 1.45; }
+  #hud .t { font-size: 15px; font-weight: 600; color: #fff; }
+  #hud .s { font-size: 12px; color: #9aa1ad; }
+  #hud .s a { color: #7ab0ff; text-decoration: none; pointer-events: auto; }
+  #bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; gap: 8px; align-items: center; background: rgba(16,18,24,.72);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 10px; padding: 7px 10px;
+    backdrop-filter: blur(6px); color: #cfd3dc; font-size: 12.5px; }
+  #bar button, #bar select { background: #23262e; color: #e6e9ef; border: 1px solid #3a3f4b;
+    border-radius: 7px; padding: 5px 10px; font-size: 12.5px; cursor: pointer; }
+  #bar button:hover { background: #2d313b; }
+  #bar label { color: #9aa1ad; }
+  #panel { position: fixed; right: 14px; top: 12px; width: 218px; max-height: calc(100vh - 90px);
+    overflow-y: auto; background: rgba(16,18,24,.82); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px; padding: 10px 12px 12px; backdrop-filter: blur(6px);
+    color: #cfd3dc; font-size: 12px; }
+  #panel h3 { margin: 0 0 4px; font-size: 12.5px; color: #fff; font-weight: 600; }
+  #panel .row { margin: 8px 0 1px; display: flex; justify-content: space-between; }
+  #panel .row .v { color: #7ab0ff; font-variant-numeric: tabular-nums; }
+  #panel input[type=range] { width: 100%; height: 14px; accent-color: #7ab0ff; margin: 0; }
+  #panel.hidden { display: none; }
+  #err { position: fixed; inset: 0; margin: auto; width: min(760px, 88vw); height: fit-content;
+    background: #2a1215; color: #ffb4b4; border: 1px solid #7a2e2e; border-radius: 10px;
+    padding: 18px 22px; white-space: pre-wrap; font: 12.5px/1.6 Consolas, monospace;
+    max-height: 70vh; overflow: auto; z-index: 10; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="t">不安爬行 · 丛生根须</div>
+  <div class="s">炭笔素描 · 键盘 WASD / ↑↓←→ 下达前行指令（仅键盘，无鼠标控制） · <a href="original.html">原版复刻</a> · <a href="art.html">绘画版</a></div>
+  <div class="s">根须会迟疑、停顿、回缩——按得越久，抗拒越强；松开也不会静止。</div>
+  <div class="s" id="stat"></div>
+</div>
+
+<div id="bar">
+  <button id="btnPause">暂停（空格）</button>
+  <button id="btnRestart">回到原地（R）</button>
+  <button id="btnFull">全屏</button>
+  <button id="btnPanel">参数面板</button>
+  <label>分辨率 <select id="selRes">
+    <option value="0.5">50%</option>
+    <option value="0.75">75%</option>
+    <option value="1" selected>100%</option>
+  </select></label>
+</div>
+
+<div id="err" hidden></div>
+
+<div id="panel">
+  <h3>参数</h3>
+  <div id="sliders"></div>
+</div>
+
+<!-- ============ Field：根须丛 + 地面裂纹 + 拖痕 密度场 ============ -->
+<script type="x-shader/x-fragment" id="shader-field">// 不安爬行 · 丛生根须 —— Field Pass（Buffer A）
+// 输出：R = 根须墨量   G = 地面裂纹/凹坑密度   B = 拖痕密度
+// 根须 = 从簇心向四周放射的细软根丝（角度域条纹 + 噪声揉弯），
+// 朝按键方向探出（reach 随 uProbe 拉长），回缩时整体缩回；
+// 焦躁时根须向内蜷缩、排线瞬间加密；边缘永远破碎消散，末梢淡出融入地表。
+// （uRootPos/uFacing/uProbe/uAgitate/uDensity/uCurl/uJitterSpeed 由页面 prelude 声明）
+
+float Hash(vec2 p)
+{
+    p = fract(p*vec2(234.5,435.6));
+    p += dot(p,p+34.5);
+    return fract(p.x*p.y);
+}
+
+float Noise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = Hash(i);
+    float b = Hash(i+vec2(1,0));
+    float c = Hash(i+vec2(0,1));
+    float d = Hash(i+vec2(1,1));
+    vec2 u = f*f*(3.-2.*f);
+    return mix(a,b,u.x) + (c-a)*u.y*(1.-u.x) + (d-b)*u.x*u.y;
+}
+
+float Fbm(vec2 p)
+{
+    float v = 0.;
+    float a = .5;
+    for(int i=0; i<4; i++)
+    {
+        v += Noise(p)*a;
+        p *= 2.;
+        a *= .5;
+    }
+    return v;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
+    vec3 ro = vec3(0.0, 4.8, -19.0);
+    vec3 ta = vec3(0.0, 3.4, 0.0);
+    vec3 f = normalize(ta-ro);
+    vec3 r = normalize(cross(vec3(0,1,0),f));
+    vec3 u = cross(f,r);
+    vec3 rd = normalize(f + uv.x*r + uv.y*u);
+
+    // 地面交点（越过地平线/太远 -> 空白纸面）
+    float fog = 0.0;
+    vec2 w = vec2(0.0);
+    if (rd.y < -0.002)
+    {
+        float t = -ro.y / rd.y;
+        if (t < 70.0)
+        {
+            vec3 gp = ro + rd*t;
+            w = gp.xz;
+            fog = exp(-t*0.035);
+            // 起伏：把图案域沿视线按高度推移（伪浮雕，让排线跟着地形起伏弯折）
+            float h = Fbm(w*0.35)*1.6;
+            w -= normalize(rd.xz + vec2(1e-4, 1e-4)) * h * 0.55;
+        }
+    }
+
+    float D = 0.0;
+    float G = 0.0;
+    float T = 0.0;
+
+    if (fog > 0.001)
+    {
+        // ---- 根须丛 ----
+        vec2 q = w - uRootPos;
+        float rlen = length(q) + 1e-4;
+        vec2 dir = q / rlen;
+        float ang = atan(q.y, q.x);
+        float face = max(dot(dir, uFacing), 0.0);
+
+        // 探出/回缩：朝向方向的根丝伸展更远
+        float reach = (3.0 + 0.35*uCurl)
+                    + uProbe * (1.0 + 1.7*face*face)
+                    - 0.6 * max(-uProbe, 0.0);
+        reach *= 0.85 + 0.3*uDensity;
+
+        float wob = 0.5 + 0.55*uCurl + uAgitate*0.4;
+        float sw = Fbm(dir*2.8 + vec2(iTime*0.15*uJitterSpeed*0.2, -iTime*0.11*uJitterSpeed*0.2)) - 0.5;
+
+        // 两套角度域根丝（交叉处自然加深）
+        float v1 = ang*(9.0/6.2832) + sw*wob*3.2
+                 + (Fbm(q*0.5 + iTime*0.10*uJitterSpeed*0.2)-0.5)*1.3*(0.5 + uAgitate*0.5);
+        float s1 = 1.0 - smoothstep(0.07, 0.20, abs(fract(v1)-0.5));
+        float v2 = ang*(16.0/6.2832) + 0.41 - sw*wob*2.1
+                 + (Fbm(q*0.85 - iTime*0.08*uJitterSpeed*0.2)-0.5)*1.0;
+        float s2 = 1.0 - smoothstep(0.06, 0.17, abs(fract(v2)-0.5));
+
+        float mask = smoothstep(reach, reach*0.7, rlen);
+        mask *= 0.6 + 0.4*Noise(q*1.25 + iTime*0.3*uJitterSpeed*0.2);   // 边缘破碎
+        float tipFade = 0.35 + 0.65*smoothstep(reach, reach*0.4, rlen);      // 末梢淡出
+
+        D = (s1*0.8 + s2*0.55 + s1*s2*0.45) * mask * tipFade;
+
+        // 战栗内层：焦躁时细密排线向内加密（蜷缩感）
+        float v3 = ang*(27.0/6.2832) + (Fbm(q*1.5 + iTime*0.9*uJitterSpeed*0.15)-0.5)*3.0;
+        float s3 = 1.0 - smoothstep(0.035, 0.09, abs(fract(v3)-0.5));
+        D += s3 * smoothstep(reach*0.6, 0.0, rlen) * uAgitate * 0.4;
+
+        D += smoothstep(1.4, 0.0, rlen)*0.35;   // 根丝汇聚的暗核
+        D *= fog * (0.75 + 0.5*uDensity) * 2.0;
+
+        // ---- 地面：细碎凹坑与裂纹 ----
+        float crack = 1.0 - abs(2.0*Noise(w*1.7 + vec2(3.1)) - 1.0);
+        crack = smoothstep(0.78, 0.95, crack);
+        float pits = smoothstep(0.70, 0.88, Noise(w*2.3 + 7.0));
+        G = (crack*0.75 + pits*0.5 + Fbm(w*0.55)*0.3) * fog * 0.85;
+    }
+
+    // ---- 拖痕：根须蹭过地表的临时短线（随时间消散） ----
+    for (int i = 0; i < 28; i++)
+    {
+        vec2 mark = uTrailB[i];
+        if (mark.y <= 0.0) continue;
+        float age = iTime - mark.x;
+        if (age < 0.0 || age > 7.0) continue;
+        vec2 pa = w - uTrailA[i].xy;
+        vec2 ba = uTrailA[i].zw - uTrailA[i].xy;
+        float hh = clamp(dot(pa, ba)/max(dot(ba, ba), 1e-4), 0.0, 1.0);
+        float d2 = length(pa - ba*hh);
+        float dash = 0.4 + 0.6*Hash(w*0.8 + float(i)*3.7);
+        T += (1.0 - smoothstep(0.0, 0.15, d2)) * exp(-age*0.5) * mark.y * dash;
+    }
+    T *= fog * 0.6 * uDensity;
+
+    fragColor = vec4(D, G, T, fog);
+}</script>
+
+<!-- ============ Image：炭笔斜向排线 ============ -->
+<script type="x-shader/x-fragment" id="shader-image">// 不安爬行 · 丛生根须 —— 炭笔排线 Pass（Image）
+// 密度场 -> 斜向短排线：形体全部由长短凌乱交错的排线构成，无填色块。
+// 三套交叉排线按墨量分层显现（重叠处自动加密加深），
+// 拖痕单独一层稀疏短划；所有排线随 uJitterSpeed 持续抖动，永远不会静止。
+// 纸面持续微弱颗粒；无彩色、无发光、无平滑边缘。
+// （uWidth/uJitter/uJitterSpeed/uInk/uDensity 由页面 prelude 声明）
+
+float Hash(vec2 p)
+{
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+float Noise(vec2 p)
+{
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = Hash(i);
+    float b = Hash(i + vec2(1.0, 0.0));
+    float c = Hash(i + vec2(0.0, 1.0));
+    float d = Hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+}
+
+// 一层斜向短排线：vis 为该层的墨量门槛（0..1），越高排线越密越实
+float hatchLayer(vec2 fc, float ang, float spacing, float vis, float t, float phase, float seed)
+{
+    if (vis <= 0.004) return 0.0;
+    vec2 p = vec2(fc.x*cos(ang) - fc.y*sin(ang), fc.x*sin(ang) + fc.y*cos(ang));
+    float w1 = (Noise(p*0.03 + vec2(t*0.35, -t*0.28) + seed) - 0.5) * spacing * 0.85;
+    float coord = (p.y + w1) / spacing + phase;
+    float d = abs(fract(coord) - 0.5) * spacing;
+    float lw = (0.45 + 0.5*Noise(p*0.045 + seed)) * uWidth;
+    float line = 1.0 - smoothstep(lw, lw + 0.9, d);
+    // 断笔：长短凌乱的短划
+    float along = p.x*0.6 + p.y*0.2;
+    float dash = smoothstep(0.28, 0.6, Noise(vec2(along*0.085, coord*1.7) + vec2(t*0.4, seed)));
+    line *= mix(1.0, dash, 0.85);
+    // 铅笔颗粒
+    line *= 0.4 + 0.6*Noise(fc*1.25 + vec2(t*0.7, seed));
+    return line * vis;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord)
+{
+    vec2 fc = fragCoord;
+    float t = iTime * uJitterSpeed;
+    vec4 F = texture(iChannel0, fc/iResolution.xy);
+    float D = F.r;
+    float G = F.g;
+    float T = F.b;
+    float total = clamp(D*1.25 + G*0.6 + T*0.8, 0.0, 1.5);
+
+    // 纸面
+    vec3 col = vec3(0.958, 0.947, 0.915);
+    col *= 1.0 + (Hash(fc + floor(iTime*uJitterSpeed*0.5)*11.0) - 0.5)*0.05;   // 持续颗粒闪动
+    col *= 1.0 + (Noise(fc*0.8) - 0.5)*0.02;
+    float rC = length((fc - 0.5*iResolution.xy)/iResolution.y);
+    col *= 1.0 - 0.05*smoothstep(0.55, 1.05, rC);
+
+    // 斜向排线：墨量越高层数越多（密集加深）
+    float groundMask = F.a;
+    float ink = 0.0;
+    // 地表基础淡排线（整片地面都用炭笔绘制）
+    ink += hatchLayer(fc, 0.62, 13.0/uDensity, groundMask*0.5,                 t*0.7,  0.2,  5.0) * 0.22;
+    ink += hatchLayer(fc, 0.62, 7.5/uDensity,  smoothstep(0.07, 0.30, total),  t,      0.0,  1.0) * 0.60;
+    ink += hatchLayer(fc, -0.38, 9.5/uDensity, smoothstep(0.26, 0.58, total),  t*0.85, 0.37, 2.0) * 0.45;
+    ink += hatchLayer(fc, 1.18, 12.5/uDensity, smoothstep(0.50, 0.95, total),  t*1.15, 0.71, 3.0) * 0.32;
+    // 拖痕：稀疏短划
+    ink += hatchLayer(fc, 0.25, 11.0/uDensity, smoothstep(0.08, 0.30, T),      t*1.30, 0.50, 4.0) * 0.50;
+
+    col = mix(col, vec3(0.16, 0.15, 0.14), clamp(ink, 0.0, 1.0)*uInk);
+
+    fragColor = vec4(col, 1.0);
+}</script>
+
+<script>
+"use strict";
+(() => {
+  window.addEventListener("error", e => {
+    window.__pageError = (e.message || String(e)) + (e.error && e.error.stack ? "\n" + e.error.stack : "");
+  });
+  const canvas = document.getElementById("c");
+  const errBox = document.getElementById("err");
+  const statEl = document.getElementById("stat");
+  const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+
+  function fatal(msg) { errBox.hidden = false; errBox.textContent = msg; }
+  if (!gl) { fatal("需要 WebGL2 支持：请使用较新的 Chrome / Edge / Firefox 打开本页面。"); return; }
+
+  // ---------- Shadertoy 兼容的 GLSL 包装 ----------
+  const VERT = `#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  function fragSource(user) {
+    return `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+
+uniform vec3      iResolution;
+uniform float     iTime;
+uniform float     iTimeDelta;
+uniform int       iFrame;
+uniform float     iFrameRate;
+uniform vec4      iMouse;
+uniform vec4      iDate;
+uniform float     iSampleRate;
+uniform vec3      iChannelResolution[4];
+uniform float     iChannelTime[4];
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+
+uniform vec2  uRootPos;
+uniform vec2  uFacing;
+uniform float uProbe;
+uniform float uAgitate;
+uniform float uDensity;
+uniform float uCurl;
+uniform float uWidth;
+uniform float uJitter;
+uniform float uJitterSpeed;
+uniform float uInk;
+uniform float uMoveSpeed;
+uniform float uTrailAmp;
+uniform vec4  uTrailA[28];
+uniform vec2  uTrailB[28];
+
+` + user + `
+out vec4 outColor;
+void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
+  }
+
+  function compileShader(type, src, label) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      fatal("[" + label + "] 着色器编译失败:\n" + gl.getShaderInfoLog(s));
+      throw new Error("compile failed");
+    }
+    return s;
+  }
+
+  function buildProgram(fsSrc, label) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compileShader(gl.VERTEX_SHADER, VERT, label));
+    gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSrc, label));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      fatal("[" + label + "] 链接失败:\n" + gl.getProgramInfoLog(p));
+      throw new Error("link failed");
+    }
+    const u = {};
+    const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) {
+      const info = gl.getActiveUniform(p, i);
+      u[info.name.replace("[0]", "")] = gl.getUniformLocation(p, info.name);
+    }
+    return { prog: p, u };
+  }
+
+  // ---------- 全屏三角形带 ----------
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  // ---------- Pass 定义（Field -> Image） ----------
+  const EMBEDDED = {
+    "Field": document.getElementById("shader-field").textContent,
+    "Image": document.getElementById("shader-image").textContent,
+  };
+
+  const passDefs = [
+    { name: "Field", file: "rootsA.frag", toScreen: false, channels: [null, null, null, null] },
+    { name: "Image", file: "rootsB.frag", toScreen: true,  channels: ["Field", null, null, null] },
+  ];
+
+  async function loadUserCode() {
+    const out = {};
+    for (const d of passDefs) {
+      let src = EMBEDDED[d.name];
+      try {
+        const r = await fetch(d.file, { cache: "no-store" });
+        if (r.ok) src = await r.text();
+      } catch (e) { /* file:// 下用内嵌副本 */ }
+      out[d.name] = src;
+    }
+    return out;
+  }
+
+  // ---------- Field 的乒乓渲染目标 ----------
+  const RT = {};
+  function allocTargets(name) {
+    if (RT[name]) for (const k of ["0", "1"]) {
+      gl.deleteTexture(RT[name][k].tex); gl.deleteFramebuffer(RT[name][k].fbo);
+    }
+    const t = {};
+    for (const k of [0, 1]) {
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0,
+                    gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      t[k] = { tex, fbo };
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    RT[name] = t;
+  }
+
+  // ---------- 可调参数 ----------
+  const PARAMS = [
+    ["uDensity",     "线条密度", 0.4, 2.6, 0.02, 1.0],
+    ["uWidth",       "线条粗细", 0.4, 2.0, 0.02, 1.0],
+    ["uJitter",      "抖动幅度", 0.0, 2.5, 0.05, 1.0],
+    ["uJitterSpeed", "抖动速度", 0.0, 20,  0.1,  1.0],
+    ["uCurl",        "线条卷曲", 0.0, 2.0, 0.05, 0.6],
+    ["uMoveSpeed",   "移动速度", 1.0, 12.0, 0.1, 3.0],
+    ["uTrailAmp",    "拖痕强度", 0.0, 2.0, 0.05, 1.0],
+    ["uInk",         "线条深浅", 0.2, 2.0, 0.05, 1.0],
+  ];
+  const param = {};
+  PARAMS.forEach(p => param[p[0]] = p[5]);
+  const slidersEl = document.getElementById("sliders");
+  PARAMS.forEach(([name, label, min, max, step, def]) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const lab = document.createElement("span");
+    lab.textContent = label;
+    const val = document.createElement("span");
+    val.className = "v";
+    val.textContent = def;
+    row.append(lab, val);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = min; input.max = max; input.step = step; input.value = def;
+    input.addEventListener("input", () => {
+      param[name] = parseFloat(input.value);
+      val.textContent = input.value;
+    });
+    slidersEl.append(row, input);
+  });
+  document.getElementById("btnPanel").addEventListener("click", () =>
+    document.getElementById("panel").classList.toggle("hidden"));
+
+  // ---------- 根须状态：抗拒相位机（探出→停顿→回缩→再试探） ----------
+  const root = { x: 0, z: 0, fx: 0, fz: 1, probe: 0, agit: 0.15,
+                 phase: 0, pt: 0, heldT: 0, sway: 0, px: 0, pz: 0 };
+  const PHASES = [["probe", 0.5], ["hold", 0.20], ["retract", 0.36]];
+  const keys = new Set();
+
+  // 拖痕环形缓冲：28 段短线，随时间在着色器里淡出
+  const TRAIL_N = 28;
+  const trailA = new Float32Array(TRAIL_N * 4);
+  const trailB = new Float32Array(TRAIL_N * 2);
+  let trailHead = 0;
+  function pushTrail(x0, z0, x1, z1, str) {
+    trailHead = (trailHead + 1) % TRAIL_N;
+    const a = trailHead * 4, b = trailHead * 2;
+    trailA[a] = x0; trailA[a+1] = z0; trailA[a+2] = x1; trailA[a+3] = z1;
+    trailB[b] = simTime; trailB[b+1] = str;
+  }
+
+  const selRes = document.getElementById("selRes");
+  const btnPause = document.getElementById("btnPause");
+  let simTime = 0, lastNow = 0, frame = 0, ping = 0, paused = false;
+  let passes = null;
+  let fpsAvg = 0;
+  let dragging = false;
+
+  function resize() {
+    const scale = parseFloat(selRes.value);
+    const w = Math.max(1, Math.round(canvas.clientWidth * scale));
+    const h = Math.max(1, Math.round(canvas.clientHeight * scale));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w; canvas.height = h;
+      for (const d of passDefs) if (!d.toScreen) allocTargets(d.name);
+    }
+  }
+
+  function restart() {
+    simTime = 0; frame = 0; ping = 0;
+    root.x = 0; root.z = 0; root.fx = 0; root.fz = 1;
+    root.probe = 0; root.agit = 0.15; root.phase = 0; root.pt = 0; root.heldT = 0;
+    trailB.fill(0);
+    for (const d of passDefs) if (!d.toScreen) allocTargets(d.name);
+  }
+
+  function setUnif(p, name, setter) { if (p.u[name]) setter(p.u[name]); }
+
+  function render(dt) {
+    resize();
+    const w = canvas.width, h = canvas.height;
+    const d = new Date();
+    const date = [d.getFullYear(), d.getMonth() + 1, d.getDate(),
+                  d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000];
+
+    for (const p of passes) {
+      if (!p.toScreen) {
+        const target = RT[p.name][1 - ping];
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+      } else {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+      gl.viewport(0, 0, w, h);
+      gl.useProgram(p.prog);
+
+      p.channels.forEach((ch, ci) => {
+        gl.activeTexture(gl.TEXTURE0 + ci);
+        let tex = null;
+        if (ch) tex = RT[ch][ping].tex;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        if (p.u["iChannel" + ci]) gl.uniform1i(p.u["iChannel" + ci], ci);
+      });
+
+      setUnif(p, "iResolution", loc => gl.uniform3f(loc, w, h, w / h));
+      setUnif(p, "iTime", loc => gl.uniform1f(loc, simTime));
+      setUnif(p, "iTimeDelta", loc => gl.uniform1f(loc, Math.min(dt, 0.1)));
+      setUnif(p, "iFrame", loc => gl.uniform1i(loc, frame));
+      setUnif(p, "iFrameRate", loc => gl.uniform1f(loc, fpsAvg || 60));
+      setUnif(p, "iMouse", loc => gl.uniform4f(loc, 0, 0, 0, 0));
+      setUnif(p, "iDate", loc => gl.uniform4f(loc, date[0], date[1], date[2], date[3]));
+      setUnif(p, "iSampleRate", loc => gl.uniform1f(loc, 44100));
+      setUnif(p, "iChannelResolution", loc => gl.uniform3fv(loc, new Float32Array(12)));
+      setUnif(p, "iChannelTime", loc => gl.uniform1fv(loc, new Float32Array(4)));
+
+      for (const [name] of PARAMS) setUnif(p, name, loc => gl.uniform1f(loc, param[name]));
+      setUnif(p, "uRootPos", loc => gl.uniform2f(loc, root.x, root.z));
+      setUnif(p, "uFacing", loc => gl.uniform2f(loc, root.fx, root.fz));
+      setUnif(p, "uProbe", loc => gl.uniform1f(loc, root.probe));
+      setUnif(p, "uAgitate", loc => gl.uniform1f(loc, root.agit));
+      setUnif(p, "uTrailA", loc => gl.uniform4fv(loc, trailA));
+      setUnif(p, "uTrailB", loc => gl.uniform2fv(loc, trailB));
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    ping = 1 - ping;
+    frame++;
+  }
+
+  function tick(now) {
+    try {
+      const dt = lastNow ? Math.min((now - lastNow) / 1000, 0.05) : 0;
+      lastNow = now;
+      if (dt > 0) fpsAvg = fpsAvg ? fpsAvg * 0.95 + (1 / Math.max(dt, 1e-4)) * 0.05 : 1 / Math.max(dt, 1e-4);
+      if (!paused) simTime += dt;
+
+      // ---- 键盘方向（仅键盘，无鼠标控制） ----
+      let dx = 0, dz = 0;
+      if (keys.has("ArrowLeft") || keys.has("KeyA")) dx -= 1;
+      if (keys.has("ArrowRight") || keys.has("KeyD")) dx += 1;
+      if (keys.has("ArrowUp") || keys.has("KeyW")) dz += 1;
+      if (keys.has("ArrowDown") || keys.has("KeyS")) dz -= 1;
+      const anyKey = (dx !== 0 || dz !== 0);
+
+      // 焦躁值：按住越久越抗拒；松开后缓慢平复，但永远残留不安
+      if (anyKey) {
+        root.heldT += dt;
+        root.agit = Math.min(1.8, root.agit + dt * (0.4 + root.heldT * 0.12));
+        const l = Math.hypot(dx, dz);
+        const k = Math.min(1, dt * 3.0);
+        root.fx += (dx / l - root.fx) * k;
+        root.fz += (dz / l - root.fz) * k;
+        const fl = Math.hypot(root.fx, root.fz) || 1;
+        root.fx /= fl; root.fz /= fl;
+      } else {
+        root.heldT = 0;
+        root.agit += (0.12 - root.agit) * Math.min(1, dt * 1.3);
+      }
+
+      // ---- 抗拒相位机：探出 → 停顿 → 回缩 → 再试探 ----
+      const dur = PHASES[root.phase][1];
+      root.pt += dt * (anyKey ? 1 : 0.75);
+      let ph = PHASES[root.phase][0];
+      if (root.pt >= dur) {
+        root.pt -= dur;
+        root.phase = (root.phase + 1) % 3;
+        ph = PHASES[root.phase][0];
+        if (ph === "probe") root.sway = Math.random() * Math.PI * 2;   // 每次探出方向略歪
+      }
+
+      const spd = (2.0 + 1.1 * root.agit) * (param.uMoveSpeed || 3) * 0.5;
+      const swA = Math.sin(simTime * 2.6 + root.sway) * (0.3 + root.agit * 0.55);
+      const sideX = -root.fz, sideZ = root.fx;
+
+      if (ph === "probe") {
+        const k = Math.min(root.pt / dur, 1);
+        const e = k * k * (3 - 2 * k);
+        root.probe = e * (anyKey ? 1.0 : 0.3);
+        if (anyKey) {
+          const vx = (root.fx + sideX * swA) * spd * e;
+          const vz = (root.fz + sideZ * swA) * spd * e;
+          root.px = root.x; root.pz = root.z;
+          root.x = Math.min(12, Math.max(-12, root.x + vx * dt));
+          root.z = Math.min(16, Math.max(-8, root.z + vz * dt));
+          if (Math.hypot(root.x - root.px, root.z - root.pz) > 0.004)
+            pushTrail(root.px, root.pz, root.x, root.z, (0.8 + root.agit * 0.4) * param.uTrailAmp);
+        }
+      } else if (ph === "hold") {
+        root.probe = anyKey ? 1.0 : 0.18;
+      } else { // retract 回缩
+        const k = Math.min(root.pt / dur, 1);
+        const e = k * k * (3 - 2 * k);
+        root.probe = 1.0 - 1.45 * e * (anyKey ? 1.0 : 0.6);
+        if (anyKey) {
+          const vx = -(root.fx - sideX * swA * 0.6) * spd * 0.6 * e;
+          const vz = -(root.fz - sideZ * swA * 0.6) * spd * 0.6 * e;
+          root.px = root.x; root.pz = root.z;
+          root.x = Math.min(12, Math.max(-12, root.x + vx * dt));
+          root.z = Math.min(16, Math.max(-8, root.z + vz * dt));
+          if (Math.hypot(root.x - root.px, root.z - root.pz) > 0.004)
+            pushTrail(root.px, root.pz, root.x, root.z, (0.5 + root.agit * 0.3) * param.uTrailAmp);
+        }
+      }
+
+      render(dt);
+    } catch (e) {
+      window.__pageError = (e && (e.message + "\n" + e.stack)) || String(e);
+    }
+    statEl.textContent = paused ? "已暂停（根须仍在等你）" :
+      Math.round(canvas.width) + "×" + Math.round(canvas.height) + " · " + Math.round(fpsAvg) + " FPS";
+    window.__status = { ok: true, hidden: document.hidden, paused, w: canvas.width, h: canvas.height,
+      fps: Math.round(fpsAvg), frame, error: window.__pageError || null,
+      pos: { x: +root.x.toFixed(2), z: +root.z.toFixed(2) },
+      probe: +root.probe.toFixed(2), agit: +root.agit.toFixed(2), phase: root.phase };
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- 键盘（仅 WASD / 方向键） ----------
+  const MOVE_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "KeyW", "KeyA", "KeyS", "KeyD"];
+  window.addEventListener("keydown", e => {
+    if (MOVE_KEYS.includes(e.code)) { e.preventDefault(); keys.add(e.code); return; }
+    if (e.code === "Space") { e.preventDefault(); togglePause(); }
+    if (e.code === "KeyR") restart();
+  });
+  window.addEventListener("keyup", e => keys.delete(e.code));
+  window.addEventListener("blur", () => keys.clear());
+
+  function togglePause() {
+    paused = !paused;
+    btnPause.textContent = paused ? "继续（空格）" : "暂停（空格）";
+  }
+  btnPause.addEventListener("click", togglePause);
+  document.getElementById("btnRestart").addEventListener("click", restart);
+  document.getElementById("btnFull").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+  selRes.addEventListener("change", resize);
+
+  // ---------- 启动 ----------
+  loadUserCode().then(src => {
+    for (const d of passDefs) {
+      const built = buildProgram(fragSource(src[d.name]), d.name);
+      d.prog = built.prog; d.u = built.u;
+    }
+    passes = passDefs;
+    resize();
+    restart();
+    window.__started = true;
+    requestAnimationFrame(tick);
+  }).catch(e => {
+    window.__pageError = String(e && e.stack || e);
+    fatal("初始化失败: " + (e && e.message || e));
+  });
+})();
+</script>
+</body>
+</html>

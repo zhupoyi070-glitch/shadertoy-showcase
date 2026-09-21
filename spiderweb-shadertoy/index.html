@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpiderWeb — Shadertoy 4fc3zf 本地复现</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  #c { display: block; width: 100vw; height: 100vh; }
+  #hud {
+    position: fixed; top: 8px; right: 10px; text-align: right;
+    font: 12px/1.5 Consolas, monospace; color: #9f9;
+    background: rgba(0,0,0,.45); padding: 6px 10px; border-radius: 6px;
+    pointer-events: none; white-space: pre; display: none;
+  }
+  #panelToggle {
+    position: fixed; left: 10px; top: 10px; z-index: 20;
+    font: 13px Consolas, monospace; color: #eee; cursor: pointer;
+    background: rgba(0,0,0,.55); border: 1px solid #555;
+    border-radius: 6px; padding: 5px 12px;
+  }
+  #panel {
+    position: fixed; left: 10px; top: 44px; z-index: 20; width: 250px;
+    background: rgba(0,0,0,.62); border: 1px solid #444; border-radius: 8px;
+    padding: 10px 12px; color: #ddd; font: 12px/1.5 Consolas, monospace;
+    backdrop-filter: blur(3px);
+  }
+  #panel hr { border: 0; border-top: 1px solid #444; margin: 8px 0; }
+  #panel .row { margin-bottom: 7px; }
+  #panel label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+  #panel label span { color: #fd5; }
+  #panel input[type=range] { width: 100%; accent-color: #e33; height: 18px; margin: 0; }
+  #panel .chk { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  #panel .btns { display: flex; gap: 6px; }
+  #panel .btns button {
+    flex: 1; font: 12px Consolas, monospace; cursor: pointer;
+    background: #333; color: #eee; border: 1px solid #555; border-radius: 5px; padding: 4px 0;
+  }
+  #panel .btns button:hover { background: #444; }
+  #panel .tip {
+    display: inline-block; width: 14px; height: 14px; line-height: 13px;
+    text-align: center; border-radius: 50%; background: #666; color: #eee;
+    font-size: 10px; cursor: help; margin-left: 3px; padding: 0; border: 0;
+    vertical-align: 1px;
+  }
+  #panel .tip:hover { background: #e33; }
+  #tooltip {
+    position: fixed; z-index: 60; max-width: 260px; display: none;
+    background: rgba(15,15,15,.96); color: #ffe; border: 1px solid #e33;
+    border-radius: 6px; padding: 8px 10px; font: 12px/1.6 Consolas, monospace;
+    pointer-events: none; box-shadow: 0 2px 12px rgba(0,0,0,.6);
+  }
+  #err {
+    position: fixed; inset: 0; display: none; overflow: auto; z-index: 40;
+    background: rgba(20,0,0,.94); color: #f99;
+    font: 13px/1.6 Consolas, monospace; padding: 24px; white-space: pre-wrap;
+  }
+  #taskbar {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 25; display: none; text-align: center; min-width: 560px;
+    background: rgba(0,0,0,.72); border: 2px solid rgba(255,255,255,.85);
+    border-radius: 10px;
+    padding: 12px 26px; color: #eee; font: 14px/1.7 Consolas, monospace;
+    box-shadow: 0 0 18px rgba(255,255,255,.12);
+  }
+  #taskbar::before {
+    content: ""; position: absolute; inset: 0; border-radius: 8px; pointer-events: none;
+    background:
+      repeating-radial-gradient(circle at 0 0,      rgba(255,255,255,0) 0 13px, rgba(255,255,255,.20) 13px 14px),
+      repeating-radial-gradient(circle at 100% 0,   rgba(255,255,255,0) 0 13px, rgba(255,255,255,.20) 13px 14px),
+      repeating-radial-gradient(circle at 0 100%,   rgba(255,255,255,0) 0 13px, rgba(255,255,255,.20) 13px 14px),
+      repeating-radial-gradient(circle at 100% 100%,rgba(255,255,255,0) 0 13px, rgba(255,255,255,.20) 13px 14px);
+  }
+  #tbTitle { color: #fff; font-size: 17px; letter-spacing: 1px; }
+  #tbGoal  { color: #ffe9a8; font-size: 14px; display: none; margin-top: 6px;
+             background: rgba(255,255,255,.07); border-radius: 6px; padding: 6px 12px;
+             text-align: left; }
+  #tbGoal b { color: #fff; }
+  #tbProg  { color: #fd5; font-size: 14px; }
+  #taskbar { pointer-events: none; }          /* 不挡蜘蛛的点击 */
+  #tbBtns  { display: flex; gap: 8px; justify-content: center; margin-top: 8px;
+             pointer-events: auto; }
+  #tbHint1, #tbHint2 {
+    font: 13px Consolas, monospace; cursor: pointer;
+    background: #1c1c1c; color: #fff; border: 1px solid #888;
+    border-radius: 6px; padding: 4px 14px;
+  }
+  #tbHint1:hover, #tbHint2:hover:not(:disabled) { background: #333; border-color: #fff; }
+  #tbHint2:disabled { color: #777; cursor: not-allowed; }
+  #dlg {
+    position: fixed; inset: 0; z-index: 45; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.55);
+  }
+  #dlgCard {
+    width: 580px; max-width: 88vw; background: #0d0d0d; color: #eee;
+    border: 2px solid rgba(255,255,255,.85); border-radius: 12px;
+    padding: 24px 30px; position: relative;
+    font: 13px/1.9 Consolas, monospace;
+    box-shadow: 0 0 24px rgba(255,255,255,.15);
+  }
+  #dlgCard::before {
+    content: ""; position: absolute; inset: 0; border-radius: 10px; pointer-events: none;
+    background:
+      repeating-radial-gradient(circle at 0 0,    rgba(255,255,255,0) 0 16px, rgba(255,255,255,.16) 16px 17px),
+      repeating-radial-gradient(circle at 100% 0, rgba(255,255,255,0) 0 16px, rgba(255,255,255,.16) 16px 17px),
+      repeating-radial-gradient(circle at 0 100%, rgba(255,255,255,0) 0 16px, rgba(255,255,255,.16) 16px 17px),
+      repeating-radial-gradient(circle at 100% 100%,rgba(255,255,255,0) 0 16px, rgba(255,255,255,.16) 16px 17px);
+  }
+  #dlgTitle { color: #fff; font-size: 17px; margin-bottom: 12px; }
+  #dlgBody  { color: #ddd; white-space: pre-wrap; }
+  #btnDone {
+    margin-top: 18px; width: 100%; cursor: pointer;
+    font: 14px Consolas, monospace; padding: 10px 0;
+    background: #fff; color: #000; border: 0; border-radius: 8px;
+  }
+  #btnDone:hover { background: #ddd; }
+  #webcorner {
+    position: fixed; left: 0; bottom: 0; width: 300px; height: 300px; z-index: 15;
+    pointer-events: none;
+    background:
+      repeating-conic-gradient(from 90deg at 0% 100%,
+        rgba(255,255,255,.25) 0deg 1.5deg, rgba(255,255,255,0) 1.5deg 15deg),
+      repeating-radial-gradient(circle at 0% 100%,
+        rgba(255,255,255,0) 0 42px, rgba(255,255,255,.3) 42px 44px);
+  }
+  #btnGame {
+    position: fixed; left: 13vw; bottom: 22vh; z-index: 20;
+    font: 20px/1 Consolas, monospace; letter-spacing: 2px; text-align: left;
+    padding: 22px 34px; cursor: pointer;
+    background: #0a0a0a; color: #fff;
+    border: 2px solid rgba(255,255,255,.85); border-radius: 12px;
+    box-shadow: 0 0 22px rgba(255,255,255,.22);
+  }
+  #btnGame:hover { background: #1e1e1e; transform: scale(1.05); }
+  #btnGame.on { background: #fff; color: #000; }
+  #fx {
+    position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 30;
+    display: none; pointer-events: none; image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="webcorner"></div>
+<button id="btnGame">🕷️ 关卡模式:关</button>
+<button id="panelToggle">⚙ 参数</button>
+<div id="panel">
+  <div class="row"><label><span>模拟步速(步/帧) <button class="tip" data-tip="每帧模拟的物理步数。调大:时间加速、蛛网运动更细腻,计算量也随之增大。"></button></span><span id="vSteps">1</span></label>
+    <input type="range" id="sSteps" min="1" max="6" step="1" value="1"></div>
+  <div class="row"><label><span>渲染精度 <button class="tip" data-tip="画面分辨率倍数。调低更流畅、调高更清晰;改变会重置物理模拟。"></button></span><span id="vScale">1.00x</span></label>
+    <input type="range" id="sScale" min="0.25" max="2" step="0.05" value="1"></div>
+  <div class="row"><label class="chk"><input type="checkbox" id="cFloat" checked> 浮点缓冲(Verlet 物理必需) <button class="tip" data-tip="Verlet 物理依赖精确位置。勾掉(8位缓冲)会看到轨迹抖动、物理退化——正好对比学习。"></button></label></div>
+  <hr>
+  <div class="row"><label><span>弹簧刚度 K <button class="tip" data-tip="蛛网的软硬。调大:网紧绷、回弹快;调小:网松软、下垂明显、荡漾缓慢。"></button></span><span id="vK">0.050</span></label>
+    <input type="range" id="sK" min="0.005" max="0.2" step="0.005" value="0.05"></div>
+  <div class="row"><label><span>摩擦阻尼 <button class="tip" data-tip="摆动能量的衰减速度。0=蛛网被碰后永远荡漾不停;调大很快恢复静止。"></button></span><span id="vFriction">0.030</span></label>
+    <input type="range" id="sFriction" min="0" max="0.3" step="0.005" value="0.03"></div>
+  <div class="row"><label><span>重力强度 <button class="tip" data-tip="蛛网被往下压的程度。0=蜘蛛失重漂浮;10=整张网被压得大幅下垂。"></button></span><span id="vGravity">3.0</span></label>
+    <input type="range" id="sGravity" min="0" max="10" step="0.1" value="3"></div>
+  <div class="row"><label><span>蛛网间距 R1 <button class="tip" data-tip="网眼大小。拖动滑杆时整张网会实时缩放。"></button></span><span id="vR1">0.020</span></label>
+    <input type="range" id="sR1" min="0.01" max="0.06" step="0.001" value="0.02"></div>
+  <div class="row"><label><span>拉网力度 <button class="tip" data-tip="按住鼠标拖动时,拉扯蛛网与蜘蛛的强度。0=鼠标失效。"></button></span><span id="vMouseK">0.40</span></label>
+    <input type="range" id="sMouseK" min="0" max="1.5" step="0.05" value="0.4"></div>
+  <hr>
+  <div class="btns">
+    <button id="btnPause">暂停</button>
+    <button id="btnReset">重置</button>
+  </div>
+  <div style="margin-top:6px;color:#999">悬停 ? 查看参数说明&#10;空格=暂停  R=重置  P=面板  按住鼠标拖动=拉扯蛛网</div>
+</div>
+<div id="hud"></div>
+<div id="taskbar">
+  <div id="tbTitle"></div>
+  <div id="tbProg"></div>
+  <div id="tbBtns">
+    <button id="tbHint1">💡 提示1</button>
+    <button id="tbHint2" disabled>🔒 提示2</button>
+  </div>
+  <div id="tbGoal"></div>
+</div>
+<div id="dlg">
+  <div id="dlgCard">
+    <div id="dlgTitle"></div>
+    <div id="dlgBody"></div>
+    <button id="btnDone">完成 →</button>
+  </div>
+</div>
+<canvas id="fx" width="96" height="54"></canvas>
+<div id="err"></div>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+void main(){
+  vec2 p = vec2( float((gl_VertexID<<1)&2), float(gl_VertexID&2) );
+  gl_Position = vec4( p*2.0-1.0, 0.0, 1.0 );
+}</script>
+
+<script id="fs-common" type="text/x-fragment">#define GridSize ivec2(10,7)
+#define Sqrt2 1.41421
+#define F00 ivec2(0,0)
+#define F01 ivec2(0,1)
+#define R iResolution.xy
+#define PI 3.141592654
+// v2:物理参数改为 uniform,由面板滑杆实时控制(默认值 = 原作常量)
+uniform float K;         // 弹簧刚度(原 0.05)
+uniform float Friction;  // 摩擦阻尼(原 0.03)
+uniform vec2  Gravity;   // 重力(JS 传 (0,-强度),原 (0,-3))
+uniform float uMouseK;   // 拉网力度(原 0.4)
+uniform float uSpiderAnx; // 蜘蛛焦虑值(v4 游戏关卡:0..1,JS 传入,控制腿部抖动)
+// v5:爬行离场(第二关通关演出)
+uniform float uCrawl;     // 爬行进度 0..1(JS 驱动)
+uniform vec2  uCrawlFrom; // 爬行起点(蜘蛛质心离开蛛网时的位置)
+uniform vec2  uCrawlDir;  // 爬行方向(指向最近的屏幕外角落)
+uniform float uCrawlLen;  // 爬行总距离(保证走出屏幕)
+// v8:蜘蛛鼠标力(供 JS 侧点击判定镜像同一偏移)
+// MouseForce = (iMouse.xy/R - vec2(0.7,0.5)) * uMouseK —— JS 侧按同公式计算后加到质心屏幕坐标上
+#define MouseForce (iMouse.xy/R-vec2(0.7,0.5))*uMouseK
+#define spiderf ivec2[] (ivec2(0,2),ivec2(9,1),ivec2(7,1),ivec2(1,2),ivec2(5,2),ivec2(4,1),ivec2(2,1),ivec2(6,2));
+#define spidert ivec2[] (ivec2(0,1),ivec2(8,1),ivec2(6,2),ivec2(1,1),ivec2(5,3),ivec2(5,2),ivec2(2,0),ivec2(6,3));</script>
+<script id="fs-bufferA" type="text/x-fragment">
+uniform float R1;   // 蛛网节点间距(v2 滑杆,原 0.02)
+
+vec2 HukeLaw(in vec2 localP,in vec2 otherP,float k,float r){
+	vec2 AB = otherP - localP;
+	float dis_AB = max(length(AB), 1e-6);   // 稳健性修复:防止两节点重合时 0/0=NaN 污染整个状态
+    vec2 dir_AB = AB / dis_AB;
+    return (dis_AB - r)*k * dir_AB;
+}
+
+vec4 GetP(in ivec2 iU){
+	return texelFetch(iChannel0,iU,0);
+}
+vec2 GetOtherP(in ivec2 iU,in ivec2 offset){
+	return texelFetch(iChannel0,iU+offset,0).xy;
+}
+
+vec2 Simulation(vec2 localP,ivec2 iU,ivec2 offset,float k,float r){
+	vec2 otherP = GetOtherP(iU,offset);	    	
+	return HukeLaw(localP,otherP,K,r);
+}
+vec2 Simulation1(vec2 localP,ivec2 iU0,ivec2 iU1,float k,float r){
+	vec4 otherP = GetP(iU1);	    	
+	return HukeLaw(localP,otherP.xy,K,r);
+}
+
+vec2 Constraint(in ivec2 iU,in vec2 localP){
+    
+    float r1 = R1*(float(iU.y)*0.8+1.);
+    float r2 = R1*(float(iU.y)*0.1+1.);
+    //spider node force  蛛网上下左右
+    //径向拉力
+    if(iU.x >0)
+    {
+        localP += Simulation(localP,iU,ivec2(-1, 0),K,r1);
+    }
+    if(iU.x < GridSize.x -1)
+    {
+    	localP += Simulation(localP,iU,ivec2( 1, 0),K,r1);
+    }
+    //横向拉力
+    if(iU.y > 0)
+    {
+        localP += Simulation(localP,iU,ivec2( 0,-1),K,r1);
+    }
+    
+    if(iU.y < GridSize.y - 1)
+    {
+    	localP += Simulation(localP,iU,ivec2( 0, 1),K,r2);
+    }
+    //Suture 缝合
+    if(iU.x == 0)
+    {
+        localP += Simulation(localP,iU,ivec2( GridSize.x - 1, 0),K,r1);
+    }
+    if(iU.x == GridSize.x-1)
+    {
+        localP += Simulation(localP,iU,ivec2( 1-GridSize.x, 0),K,r1);
+    }
+    //center force 中心拉力
+	if(iU.y == 0)
+    {
+        int halfroot = (GridSize.x)/2;
+        int offset = 1;
+        offset = iU.x>=halfroot?-halfroot:halfroot;
+        localP += Simulation(localP,iU,ivec2(offset,0),K,r1);
+    }
+    
+    return localP;
+}
+
+vec2 Spider(in ivec2 iU,in vec2 localP, ivec2 foot[8])
+{
+    vec2 spiderP = vec2(0.,0.);
+    float r = 0.15+sin(iTime*0.5)/60.;
+    for(int i =0;i<8;i++)
+    {
+     spiderP +=GetP(foot[i]).xy;
+    }
+    spiderP/=8.;
+    if(iMouse.z!=0.){
+    spiderP+=MouseForce;
+    }
+    if(iU ==foot[0])
+    {
+        
+        localP += HukeLaw(localP,spiderP,K,r);
+    }
+    
+    if(iU ==foot[1])
+    {
+        
+        localP += HukeLaw(localP,spiderP,K,r);
+    }
+    if(iU ==foot[2])
+    {
+        
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    if(iU ==foot[3])
+    {
+       
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    if(iU ==foot[7])
+    {
+       
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    if(iU ==foot[6])
+    {
+        
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    if(iU ==foot[5])
+    {
+       
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    if(iU ==foot[4])
+    {
+       
+        localP += HukeLaw(localP,spiderP,K,r);
+        
+    }
+    
+     return localP;
+}
+
+//Verlet Intergral
+
+vec4 VerletIntegral(in ivec2 iU){
+	vec4 P = GetP(iU);
+    ivec2 spiderfoot[8] = spiderf ;
+    if(iU.y == GridSize.y-1 ){
+   
+        float j = float(iU.x)/float(GridSize.x+1)*PI*2.;
+        vec2 sphere = vec2(sin(j)/.9+1.1,cos(j)/.9+0.5);
+        sphere = clamp(sphere,vec2(0.5,-0.15),vec2(1.75,0.95));
+    	P.xy = vec2(iU.x,iU.y)*R1+sphere;
+    }
+    
+    vec2 PreviousP = P.zw;
+    vec2 CurrentP = Constraint(iU,P.xy);
+    CurrentP = Spider(iU,CurrentP.xy,spiderfoot);
+    vec2 NextP = CurrentP + (CurrentP - PreviousP)*(1.-Friction) + Gravity*iTimeDelta*iTimeDelta/2.;
+    
+    PreviousP = CurrentP;
+
+    // 稳健性修复:位置钳制,防止拖拽激振后 Verlet 发散到 Inf/NaN
+    NextP = clamp(NextP, vec2(-5.0), vec2(5.0));
+
+    return vec4(NextP,PreviousP);
+}
+
+void mainImage( out vec4 C, in vec2 U )
+{
+    ivec2 iU = ivec2(U);
+    if(any(greaterThanEqual(iU,GridSize)))
+        return ;
+    
+    if(iFrame == 0)
+    {
+        float j = float(iU.x)/float(GridSize.x+1)*PI*2.;
+        vec2 sphere = vec2(sin(j)/.8+0.8,cos(j)/.8+0.9);
+        sphere = clamp(sphere,vec2(0.5,-0.13),vec2(1.75,0.9));
+        C = vec4((vec2(iU.x,iU.y)*R1+sphere).xyxy);
+        //C= vec4(0.5);
+        }
+    else
+    	C = VerletIntegral(iU);
+    
+	//C.r = 1.;
+}</script>
+<script id="fs-image" type="text/x-fragment">
+float Line(vec2 a, vec2 b, vec2 U)    // --- Distance to a line segment https://www.shadertoy.com/view/llySRh
+{   
+    U -= a, b -= a;
+	float h = dot( U, b ) / dot(b,b),
+          c = clamp(h, 0., 1.);
+    return h==c ? length( U - b * c ) : 1e5;   // dist to strict segment
+  //return        length( U - b * c );         // dist to segment with round ends
+}
+
+float sdEgg( in vec2 p, in float ra, in float rb )
+{
+    const float k = sqrt(3.0);
+    p.x = abs(p.x);
+    float r = ra - rb;
+    return ((p.y<0.0)       ? length(vec2(p.x,  p.y    )) - r :
+            (k*(p.x+r)<p.y) ? length(vec2(p.x,  p.y-k*r)) :
+                              length(vec2(p.x+r,p.y    )) - 2.0*r) - rb;
+}
+
+float dot2( in vec2 v ) { return dot(v,v); }
+
+//form https://www.shadertoy.com/view/MlKcDD
+float sdBezier( in vec2 pos, in vec2 A, in vec2 B, in vec2 C )
+{    
+    vec2 a = B - A;
+    vec2 b = A - 2.0*B + C;
+    vec2 c = a * 2.0;
+    vec2 d = A - pos;
+    float kk = 1.0/dot(b,b);
+    float kx = kk * dot(a,b);
+    float ky = kk * (2.0*dot(a,a)+dot(d,b)) / 3.0;
+    float kz = kk * dot(d,a);      
+    float res = 0.0;
+    float p = ky - kx*kx;
+    float p3 = p*p*p;
+    float q = kx*(2.0*kx*kx-3.0*ky) + kz;
+    float h = q*q + 4.0*p3;
+    if( h >= 0.0) 
+    { 
+        h = sqrt(h);
+        vec2 x = (vec2(h,-h)-q)/2.0;
+        vec2 uv = sign(x)*pow(abs(x), vec2(1.0/3.0));
+        float t = clamp( uv.x+uv.y-kx, 0.0, 1.0 );
+        res = dot2(d + (c + b*t)*t);
+    }
+    else
+    {
+        float z = sqrt(-p);
+        float v = acos( q/(p*z*2.0) ) / 3.0;
+        float m = cos(v);
+        float n = sin(v)*1.732050808;
+        vec3  t = clamp(vec3(m+m,-n-m,n-m)*z-kx,0.0,1.0);
+        res = min( dot2(d+(c+b*t.x)*t.x),
+                   dot2(d+(c+b*t.y)*t.y) );
+        // the third root cannot be the closest
+        // res = min(res,dot2(d+(c+b*t.z)*t.z));
+    }
+    return sqrt( res );
+}
+float DrawSpider(vec2 uv,ivec2 foot[8] ,float image)
+{
+
+    vec2 s0 = texelFetch(iChannel0,foot[0],0).xy;
+    vec2 s1 = texelFetch(iChannel0,foot[1],0).xy;
+    vec2 s2 = texelFetch(iChannel0,foot[2],0).xy;
+    vec2 s3 = texelFetch(iChannel0,foot[3],0).xy;
+    vec2 s4 = texelFetch(iChannel0,foot[4],0).xy;
+    vec2 s5 = texelFetch(iChannel0,foot[5],0).xy;
+    vec2 s6 = texelFetch(iChannel0,foot[6],0).xy;
+    vec2 s7 = texelFetch(iChannel0,foot[7],0).xy;
+    vec2 s8 = s0+s1+s2+s3+s4+s5+s6+s7;
+    s8 =s8/vec2(8.);
+    if(iMouse.z!=0.){
+    s8 += MouseForce;
+    }
+    // v5:通关爬行离场——蜘蛛脱离蛛网,沿一条蛛丝直线爬向屏幕外
+    // (蛛网本体保持静止;腿部一前一后交替摆动 = 步行动作,频率随焦虑升高)
+    if (uCrawl > 0.0) {
+        vec2 dir = normalize(uCrawlDir);
+        vec2 pp  = vec2(-dir.y, dir.x);
+        vec2 p   = uCrawlFrom + dir * (uCrawl * uCrawlLen);
+        float ph = iTime * (7.0 + 5.0*uSpiderAnx);
+        float am = 0.05 + 0.02*uSpiderAnx;
+        s0 = p + dir*( 0.055 + am*sin(ph)      ) + pp* 0.032;
+        s1 = p + dir*( 0.025 + am*sin(ph+3.14) ) + pp* 0.046;
+        s2 = p + dir*(-0.02  + am*sin(ph+1.57) ) + pp* 0.040;
+        s3 = p + dir*(-0.05  + am*sin(ph+4.71) ) + pp*-0.030;
+        s4 = p + dir*( 0.05  + am*sin(ph+0.9)  ) + pp*-0.034;
+        s5 = p + dir*(-0.01  + am*sin(ph+3.6)  ) + pp*-0.046;
+        s6 = p + dir*(-0.04  + am*sin(ph+5.2)  ) + pp*-0.020;
+        s7 = p + dir*( 0.02  + am*sin(ph+0.6)  ) + pp* 0.020;
+        s8 = p + pp*(0.012*sin(ph*0.5));               // 身体轻微起伏
+    }
+    // v4:蜘蛛焦虑抖动(仅非爬行状态:爬行时只保留腿部步伐,不再叠加颤抖)
+    if (uCrawl <= 0.0) {
+        float jf = 40.0 + 90.0*uSpiderAnx;
+        vec2 J = uSpiderAnx * 0.012 * vec2( sin(iTime*jf), cos(iTime*jf*1.31) );
+        s0 += J*1.2; s1 += J*0.8; s2 += J*1.1; s3 += J*0.9;
+        s4 += J*1.0; s5 += J*1.3; s6 += J*0.7; s7 += J*1.15;
+        s8 += J*1.4;
+    }
+    
+    float spider = sdBezier(uv,s0,s8+vec2(-0.05,0.0),s8);
+    spider = min(spider,sdBezier(uv,s7,s8+vec2(-0.05,0.0),s8));
+    spider = min(spider,sdBezier(uv,s1,s8+vec2(-0.1,0.0),s8));
+    spider = min(spider,sdBezier(uv,s2,s8+vec2(-0.1,0.0),s8));
+    spider = min(spider,sdBezier(uv,s3,s8+vec2(0.05,0.0),s8));
+    spider = min(spider,sdBezier(uv,s4,s8+vec2(0.05,0.0),s8));
+    spider = min(spider,sdBezier(uv,s5,s8+vec2(0.1,0.0),s8));
+    spider = min(spider,sdBezier(uv,s6,s8+vec2(0.1,0.0),s8));
+    spider = min(spider,length(uv-s8+vec2(0.00,0.02))-0.03);
+    spider = min(spider,sdBezier(uv,s8+vec2(0.005*sin(iTime*10.)*clamp(0.,1.,sin(iTime*2.)-0.7)+0.02,-0.07),s8+vec2(0.03,-0.05),s8+vec2(0.02,0.)));
+    spider = min(spider,sdBezier(uv,s8-vec2(0.005*sin(iTime*10.)*clamp(0.,1.,sin(iTime*2.)-0.7)+0.02,0.07),s8+vec2(-0.03,-0.05),s8+vec2(-0.02,0.)));
+    spider = min(spider,sdEgg(uv-s8+vec2(0.00,-0.05),0.05,0.00));
+    
+    spider = min(spider,image*3.);
+    
+    spider += clamp(1.-length(uv-s8+vec2(0.011,0.038)+vec2(sin(iTime*1.)*0.004,cos(iTime*1.)*0.004))*140.,0.0,1.);
+    
+    spider += clamp(1.-length(uv-s8+vec2(-0.011,0.038)+vec2(sin(iTime*1.)*0.004,cos(iTime*1.)*0.004))*140.,0.0,1.);
+    
+    spider += clamp(1.-length(uv-s8+vec2(-0.021,0.021))*190.,0.0,1.);
+    
+    spider += clamp(1.-length(uv-s8+vec2(0.021,0.021))*190.,0.0,1.);
+    
+    
+    return spider;
+}
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // Normalized pixel coordinates (from 0 to 1)
+    
+    ivec2 iU = ivec2(fragCoord);
+    vec2 uv = fragCoord/iResolution.y;
+    vec4 data = texelFetch(iChannel0,iU,0);
+    ivec2 spiderfoot[8] = spiderf;
+    float d = 200.;
+    float line=1e5;
+    for(int x=0;x < GridSize.x;x++){
+    	for(int y=0;y < GridSize.y;y++){
+        /**/
+        if(x > 0){
+            vec2 p = texelFetch(iChannel0,ivec2(x,y),0).xy;
+            vec2 p1 = texelFetch(iChannel0,ivec2(x-1,y),0).xy;
+            line = min(line,Line(p,p1,uv));
+        }
+        if(y > 0){
+            vec2 p = texelFetch(iChannel0,ivec2(x,y),0).xy;
+            vec2 p1 = texelFetch(iChannel0,ivec2(x,y-1),0).xy;
+            line = min(line,Line(p,p1,uv));
+        }
+        
+    	if(x == 0)
+        {
+            vec2 p = texelFetch(iChannel0,ivec2(x,y),0).xy;
+            vec2 p1 = texelFetch(iChannel0,ivec2(GridSize.x-1,y),0).xy;
+            line = min(line,Line(p,p1,uv));
+        }
+    	}
+    }
+    vec4 web = vec4(line<0.0015);
+    float Spider = DrawSpider(uv,spiderfoot,line);
+    
+    // Output to screen
+    //fragColor = vec4(d<0.01);
+    //line = Line(vec2(0.1,0.1),vec2(0.9,0.9),fragCoord/R);
+    fragColor = vec4(Spider<0.005);
+    //fragColor = vec4(Spider);
+}</script>
+
+<script>
+"use strict";
+(function(){
+const $ = id => document.getElementById(id);
+const canvas = $("c"), hud = $("hud"), errBox = $("err");
+
+const diag = window.__diag = {
+  gl: false, compiled: { bufferA: false, image: false },
+  frames: 0, fps: 0, bufFormat: "RGBA16F", compileError: null,
+};
+
+function fatal(msg){
+  errBox.style.display = "block";
+  errBox.textContent = msg;
+  diag.compileError = msg;
+}
+
+/* ---------- GL 基础 ---------- */
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: false, stencil: false });
+if (!gl) { fatal("此浏览器不支持 WebGL2,无法运行。"); return; }
+diag.gl = true;
+// RGBA16F 缓冲作为渲染目标必需此扩展
+const extCBF = gl.getExtension("EXT_color_buffer_float");
+diag.extCBF = !!extCBF;
+canvas.addEventListener("webglcontextlost", e => { e.preventDefault(); fatal("WebGL 上下文丢失,请刷新页面。"); });
+
+function compile(type, src){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(sh);
+    fatal("着色器编译失败:\n" + log);
+    throw new Error(log);
+  }
+  return sh;
+}
+function program(fsSrc){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, $("vs").textContent.trimStart()));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fsSrc));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    const log = gl.getProgramInfoLog(p);
+    fatal("程序链接失败:\n" + log);
+    throw new Error(log);
+  }
+  return p;
+}
+
+/* ---------- Shadertoy 标准前导 ---------- */
+const PRE = `#version 300 es
+precision highp float;
+precision highp int;
+uniform vec3      iResolution;
+uniform float     iTime;
+uniform float     iTimeDelta;
+uniform float     iFrameRate;
+uniform int       iFrame;
+uniform vec4      iMouse;
+uniform vec4      iDate;
+uniform float     iSampleRate;
+uniform vec3      iChannelResolution[4];
+uniform float     iChannelTime[4];
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+out vec4          fragColor;
+`;
+// Common pass:两段着色器共享的宏与常量
+const COMMON = $("fs-common").textContent;
+
+const params = { steps: 1, scale: 1, floatBuf: true,
+                 K: 0.05, Friction: 0.03, Gravity: 3, R1: 0.02, MouseK: 0.4 };
+let paused = false;
+
+/* ---------- 程序:Buffer A(Common + 主体)与 Image(Common + 主体) ---------- */
+const bufProg = program(PRE + COMMON + $("fs-bufferA").textContent + `
+void main(){ mainImage( fragColor, gl_FragCoord.xy ); }
+`);
+diag.compiled.bufferA = true;
+const imgProg = program(PRE + COMMON + $("fs-image").textContent + `
+void main(){ mainImage( fragColor, gl_FragCoord.xy ); }
+`);
+diag.compiled.image = true;
+
+function uniforms(p, names){
+  const u = {};
+  for (const n of names) u[n] = gl.getUniformLocation(p, n);
+  return u;
+}
+const bufU = uniforms(bufProg, ["iResolution","iTime","iTimeDelta","iFrameRate","iFrame","iMouse","iDate","iSampleRate","iChannelResolution","iChannelTime","iChannel0","K","Friction","Gravity","R1","uMouseK"]);
+const imgU = uniforms(imgProg, ["iResolution","iTime","iTimeDelta","iFrameRate","iFrame","iMouse","iDate","iSampleRate","iChannelResolution","iChannelTime","iChannel0","uMouseK","uSpiderAnx","uCrawl","uCrawlFrom","uCrawlDir","uCrawlLen"]);
+
+let texPair = null, fbo = null, bufW = 0, bufH = 0;
+function createBuffers(w, h){
+  destroyBuffers();
+  bufW = w; bufH = h;
+  const useFloat = params.floatBuf && !!extCBF;   // 扩展缺失时自动回退 8 位
+  let ifmt, type;
+  if (useFloat) { ifmt = gl.RGBA16F; type = gl.HALF_FLOAT; }
+  else          { ifmt = gl.RGBA8;  type = gl.UNSIGNED_BYTE; }
+  const mk = () => {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, gl.RGBA, type, null);
+    return t;
+  };
+  texPair = [mk(), mk()];
+  fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  for (const t of texPair) {
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  diag.bufFormat = useFloat ? "RGBA16F" : "RGBA8";
+}
+function destroyBuffers(){
+  if (texPair) { for (const t of texPair) gl.deleteTexture(t); texPair = null; }
+  if (fbo) { gl.deleteFramebuffer(fbo); fbo = null; }
+}
+
+/* ---------- 尺寸 ---------- */
+function resize(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2) * params.scale;
+  const w = Math.max(2, Math.round(canvas.clientWidth * dpr));
+  const h = Math.max(2, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    createBuffers(w, h);          // 尺寸变化即重置缓冲(与 Shadertoy 一致)
+    frame = 0;
+  }
+}
+window.addEventListener("resize", resize);
+
+/* ---------- 鼠标 (Shadertoy 原版语义:按下才更新 xy,z 按下为正/松开为负) ---------- */
+const mouse = [0, 0, 0, 0];
+let mDown = false;
+function mpos(e){
+  const k = Math.min(window.devicePixelRatio || 1, 2) * params.scale;
+  return [ e.clientX * k, (canvas.clientHeight - e.clientY) * k ];
+}
+canvas.addEventListener("mousedown", e => {
+  mDown = true; const p = mpos(e); mouse[0]=p[0]; mouse[1]=p[1]; mouse[2]=p[0]; mouse[3]=p[1];
+  if (game.on && game.phase === "play" && !paused) {
+    if (game.idx === 0) game.clicked = true;               // L1:点过就算触碰
+    if (game.idx === 1 && game.spiderScr && !game.crawl) { // L2:点中蜘蛛
+      const d = Math.hypot(p[0]-game.spiderScr[0], p[1]-game.spiderScr[1]);
+      if (d < 110) {
+        game.clicks++;
+        game.anx = Math.min(1, game.anx + 0.3);
+      }
+    }
+  }
+});
+canvas.addEventListener("mousemove", e => { if (mDown) { const p = mpos(e); mouse[0]=p[0]; mouse[1]=p[1]; } });
+window.addEventListener("mouseup", () => { mDown = false; mouse[2]=-mouse[2]; mouse[3]=-mouse[3]; });
+
+/* ================= 关卡模式 ================= */
+const FEET = [20,19,17,21,25,14,12,26];   // 8 只脚的纹理坐标(y*10+x)
+const game = { on:false, idx:0, phase:"idle", t:0, clicks:0, anx:0,
+               crawl:false, crawlPos:0, crawlFrom:null, crawlDirV:null,
+               base:null, clicked:false, avgDisp:0, maxDisp:0,
+               spider:null, spiderScr:null, lastPos:null,
+               l3t:0, l4t:0, l4armed:false, sw:0, gOK:false, hint1Seen:false };
+
+const LEVELS = [
+  { name:"第一次触碰", locked:false,
+    flavor:"这张网,好像在等你触碰…",
+    hint1:"点击蛛网任意处,再按住拖动。",
+    hint2:"最大节点位移 ≥ 0.050 即通关。",
+    brief:"蛛网是「质点-弹簧」系统:70 个质点由胡克定律弹簧 F=-k·Δx 相连。拖动鼠标 = 对附近质点施加外力,位移沿弹簧链像涟漪一样传遍整张网。" },
+  { name:"不安的蜘蛛", locked:false,
+    flavor:"蜘蛛好像有点不安…",
+    hint1:"蜘蛛看起来很烦躁——点它一下试试!",
+    hint2:"连续点中蜘蛛 15 次,它会受惊并沿蛛丝爬出画面。",
+    brief:"每次点击都会抬高蜘蛛的焦虑值:腿部抖动的振幅 A 与频率 ω 都正比于焦虑——点得越快,抖得越猛。15 次后它受惊逃离:脱离蛛网沿一条蛛丝爬出画面,而蛛网本体保持静止。" },
+  { name:"太空失重", locked:false,
+    flavor:"这张网,是不是太沉重了?",
+    hint1:"这张网是不是太沉重了?试着减轻它的负担。",
+    hint2:"重力强度 ≤ 0.5,并保持 5 秒。",
+    brief:"重力是每步加进速度里的恒定加速度 G·dt²/2。归零后只剩弹簧回弹力,蛛网回到无重力时的形状,并因阻尼极小而长时间轻轻荡漾——蜘蛛会漂到网的上方。" },
+  { name:"软网实验室", locked:false,
+    flavor:"布料的手感,取决于弹簧的软硬…",
+    hint1:"弹簧越软,网越温柔。试着让网软下来。",
+    hint2:"K ≤ 0.015 且摩擦 ≤ 0.01(保持 1 秒),再拖动蛛网使最大位移 ≥ 0.050。",
+    brief:"胡克定律里的 k 决定回复力强弱:k 小,弹簧「懒」,位移传得慢、回弹慢;摩擦(速度×(1-f))决定能量耗散:f 小,几乎无损耗,网会以固有频率长时间振荡。" },
+  { name:"呼吸的网", locked:false,
+    flavor:"蛛网好像在轻轻起伏…",
+    hint1:"网的平衡态变了,它会去追赶……让网呼吸起来。",
+    hint2:"10 秒内蛛网间距 R1 往复 ≥ 6 次(单次幅度 ≥ 0.02)。",
+    brief:"R1 是弹簧的「自然长度」。胡克力正比于(实际长度-自然长度):改 R1 = 瞬间改变全部弹簧的平衡态,整张网会收缩/扩张去追赶新平衡——往复调节,网就像在呼吸。" },
+  { name:"毕业:失重蹦迪", locked:false,
+    flavor:"最后的考验:失重中的共振…",
+    hint1:"失重之后,再给它一个节奏……",
+    hint2:"重力 ≤ 0.5 时,10 秒内拉网力度往复 ≥ 6 次(单次幅度 ≥ 0.25)。",
+    brief:"失重消除了恒定下拉力,拉网力度成为唯一周期性外力——相当于对弹簧系统做共振驱动,蜘蛛振幅越荡越大。这是「共振」的直观演示。" },
+];
+
+const tb = $("taskbar"), tbTitle = $("tbTitle"), tbGoal = $("tbGoal"), tbProg = $("tbProg");
+let liveEl1 = null, liveEl2 = null, hintShown = 0;
+function tbShow(title, flavor){
+  tb.style.display = "block";
+  tbTitle.textContent = title;
+  tbProg.textContent = flavor;                      // 可见行:悬念式形容,具体内容看提示按钮
+}
+function tbArm(i){
+  const L = LEVELS[i];
+  tbTitle.textContent = "🕷️ 关卡 " + (i+1) + "/6 · " + L.name;
+  tbProg.textContent = L.flavor;                       // 可见行:只给悬念形容
+  tbGoal.innerHTML = '<div id="tbH1"><b>提示1:</b>' + L.hint1 +
+                     ' <span id="tbLive1"></span></div>' +
+                     '<div id="tbH2"><b>提示2(通关标准):</b>' + L.hint2 +
+                     ' <span id="tbLive2"></span></div>';
+  liveEl1 = $("tbLive1"); liveEl2 = $("tbLive2");
+  $("tbH2").style.display = "none";
+  tbGoal.style.display = "none";
+  $("tbHint1").textContent = "💡 提示1";
+  $("tbHint2").textContent = "🔒 提示2(先看提示1)";
+  $("tbHint2").disabled = true;
+  hintShown = 0;
+  tb.style.display = "block";
+}
+function tbShowHint(n){
+  tbGoal.style.display = "block";               // fix:显示外层容器
+  $("tbH1").style.display = n === 1 ? "block" : "none";
+  $("tbH2").style.display = n === 2 ? "block" : "none";
+}
+$("tbHint1").addEventListener("click", () => {
+  game.hint1Seen = true;
+  $("tbHint2").disabled = false;
+  $("tbHint2").textContent = "💡 提示2";
+  tbShowHint(1);
+});
+$("tbHint2").addEventListener("click", () => {
+  if ($("tbHint2").disabled) return;
+  tbShowHint(2);
+});
+function tbHintLive(l1, l2){
+  if (liveEl1) liveEl1.textContent = l1 || "";
+  if (liveEl2) liveEl2.textContent = l2 || "";
+}
+
+function readNodes(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texPair[readIdx], 0);
+  const h = new Float32Array(10 * 7 * 4);
+  gl.readPixels(0, 0, 10, 7, gl.RGBA, gl.FLOAT, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return h;
+}
+function applyDefaults(){
+  setSl("sK", "vK", 0.05); setSl("sFriction", "vFriction", 0.03);
+  setSl("sGravity", "vGravity", 3); setSl("sR1", "vR1", 0.02);
+  setSl("sMouseK", "vMouseK", 0.4);
+}
+function setSl(id, outId, v){
+  const el = $(id); el.value = v;
+  $(outId).textContent = typeof v === "number" ? v.toFixed(Math.abs(v) < 1 ? 3 : 1) : v;
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+const fx = $("fx"), fxc = fx.getContext("2d");
+let fxActive = false, fxT = 0, fxP = [], fxW2 = false;
+function fxWave(n){
+  const cols = ["#ffe066","#7ae0ff","#ff8ad8","#b3ff8a"];
+  for (let b = 0; b < n; b++){
+    const bx = 14 + Math.random()*68, by = 8 + Math.random()*26;
+    for (let i = 0; i < 38; i++){
+      const a = Math.random()*6.283, s = 4 + Math.random()*16;
+      fxP.push({ x:bx, y:by, vx:Math.cos(a)*s, vy:Math.sin(a)*s - 5,
+        c: Math.random() < 0.55 ? "#ffffff" : cols[(Math.random()*cols.length)|0],
+        life: .9 + Math.random()*.5 });
+    }
+  }
+}
+function celebrate(){
+  fx.style.display = "block"; fxActive = true; fxT = 0; fxW2 = false; fxP = [];
+  fxWave(4);
+}
+function fxUpdate(dt){
+  fxT += dt;
+  if (fxT > 1.05 && !fxW2){ fxW2 = true; fxWave(5); }   // 第二波,更热闹
+  fxc.clearRect(0, 0, 96, 54);
+  for (const p of fxP){
+    p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 14*dt; p.life -= dt*.6;
+    if (p.life > 0){
+      fxc.globalAlpha = Math.min(1, p.life);
+      fxc.fillStyle = p.c;
+      fxc.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
+    }
+  }
+  fxc.globalAlpha = 1;
+  if (fxT > 2.8){ fxActive = false; fx.style.display = "none"; }
+}
+
+const hist = { R1: [], MouseK: [] };
+function pushHist(k, v){
+  hist[k].push({ t: game.t, v });
+  while (hist[k].length && game.t - hist[k][0].t > 12) hist[k].shift();
+}
+function swingCount(k, amp, win){
+  const arr = hist[k].filter(p => game.t - p.t <= win);
+  if (arr.length < 2) return 0;
+  let count = 0, dir = 0, ext = arr[0].v;
+  for (let i = 1; i < arr.length; i++){
+    const v = arr[i].v;
+    if (dir === 0){
+      if (v > ext + amp){ dir = 1; ext = v; }
+      else if (v < ext - amp){ dir = -1; ext = v; }
+    } else if (dir > 0){
+      if (v > ext) ext = v;
+      else if (ext - v >= amp){ count++; dir = -1; ext = v; }
+    } else {
+      if (v < ext) ext = v;
+      else if (v - ext >= amp){ count++; dir = 1; ext = v; }
+    }
+  }
+  return count;
+}
+
+function armLevel(i){
+  game.idx = i; game.phase = "play"; game.t = 0;
+  game.base = null; game.clicked = false; game.avgDisp = 0; game.maxDisp = 0;
+  game.clicks = 0; game.crawl = false; game.crawlPos = 0;
+  game.crawlFrom = null; game.crawlDirV = null; game.anx = 0;
+  game.l3t = 0; game.l4t = 0; game.l4armed = false; game.sw = 0; game.gOK = false;
+  game.hint1Seen = false;
+  hist.R1.length = 0; hist.MouseK.length = 0;
+  applyDefaults(); reset();
+  tbArm(i);
+}
+function completeLevel(){
+  game.phase = "done";
+  const L = LEVELS[game.idx];
+  tbShow("🎉 通关!· " + L.name, "烟花庆祝中…");
+  celebrate();
+  $("dlgTitle").textContent = "🎓 教学时间 · " + L.name;
+  $("dlgBody").textContent = L.brief;
+  $("btnDone").textContent = (game.idx < LEVELS.length - 1) ? "完成,进入下一关 →" : "完成,自由把玩蛛网 →";
+  $("dlg").style.display = "flex";
+}
+$("btnDone").addEventListener("click", () => {
+  $("dlg").style.display = "none";
+  if (game.phase !== "done") return;
+  if (game.idx < LEVELS.length - 1){ armLevel(game.idx + 1); }
+  else {
+    game.phase = "alldone";
+    tbShow("🎓 全部通关!", "你已掌握蜘蛛网的全部物理秘密,自由把玩蛛网吧");
+  }
+});
+
+function gameUpdate(dt){
+  const H = readNodes();
+  let sx = 0, sy = 0;
+  for (const fi of FEET){ sx += H[fi*4]; sy += H[fi*4+1]; }
+  sx /= 8; sy /= 8;
+  game.spider = [sx, sy];
+  // 屏幕坐标 = 质心 + MouseForce 偏移(与 image.frag 的 s8 += MouseForce 完全一致,
+  // 否则点击判定用的位置和玩家看到的蜘蛛会差最多 ~150px)
+  let mfx = 0, mfy = 0;
+  if (mouse[2] !== 0){
+    mfx = (mouse[0]/bufW - 0.7) * params.MouseK;
+    mfy = (mouse[1]/bufH - 0.5) * params.MouseK;
+  }
+  game.spiderScr = [ (sx + mfx)*bufH, bufH - (sy + mfy)*bufH ];
+  let disp = 0, maxd = 0;
+  for (let i = 0; i < 70; i++){
+    if (game.base){
+      const d = Math.hypot(H[i*4] - game.base[i*2], H[i*4+1] - game.base[i*2+1]);
+      disp += d; if (d > maxd) maxd = d;
+    }
+  }
+  game.avgDisp = disp / 70; game.maxDisp = maxd;
+  const lp = new Float32Array(140);
+  for (let i = 0; i < 70; i++){ lp[i*2] = H[i*4]; lp[i*2+1] = H[i*4+1]; }
+  game.lastPos = lp;
+
+  let l1 = "", l2 = "";
+  const L = LEVELS[game.idx];
+  if (game.idx === 0){                                  // L1 第一次触碰
+    if (game.clicked && !game.base) game.base = lp;     // 点击瞬间捕获基线
+    l2 = "最大节点位移 " + game.maxDisp.toFixed(3) + " / 0.050";
+    tbShow("🕷️ 关卡 1/6 · " + L.name, L.flavor);
+    if (game.clicked && game.base && game.maxDisp > 0.05) completeLevel();
+  }
+  else if (game.idx === 1){                             // L2 不安的蜘蛛
+    game.anx *= Math.exp(-dt/1.5);
+    l1 = "不安 " + Math.round(game.anx*100) + "%";
+    if (game.clicks < 15){
+      l2 = "已点击 " + game.clicks + " / 15";
+    } else {
+      if (!game.crawl){
+        game.crawl = true; game.crawlT = 0; game.crawlPos = 0;
+        game.crawlFrom = [game.spider[0], game.spider[1]];
+        const corners = [[-0.3,-0.3],[2.08,-0.3],[-0.3,1.3],[2.08,1.3]];
+        let best = 0, bd = 1e9;
+        corners.forEach((c,i)=>{ const d=Math.hypot(c[0]-game.spider[0], c[1]-game.spider[1]);
+                                 if(d<bd){bd=d;best=i;} });
+        const dx = corners[best][0]-game.spider[0], dy = corners[best][1]-game.spider[1];
+        const dl = Math.hypot(dx,dy);
+        game.crawlDirV = [dx/dl, dy/dl];
+        mouse[2] = 0; mouse[3] = 0;                    // 松开:物理蛛网保持静止
+        game.anx = Math.max(game.anx, 0.8);            // 逃离途中保持不安
+      }
+      game.crawlT += dt;
+      game.crawlPos = Math.min(1, game.crawlT/4.5);
+      l2 = "逃离进度 " + Math.round(game.crawlPos*100) + "%";
+      // 完全离场判定:质心越过边缘 170px(腿展约 110px,此时完全不可见)
+      const px = (game.crawlFrom[0] + game.crawlDirV[0]*(game.crawlPos*2.2)) * bufH;
+      const py = bufH - (game.crawlFrom[1] + game.crawlDirV[1]*(game.crawlPos*2.2)) * bufH;
+      game.spiderScr = [Math.round(px), Math.round(py)];
+      if (px < -170 || px > bufW+170 || py < -170 || py > bufH+170 || game.crawlPos >= 1) completeLevel();
+    }
+    tbShow("🕷️ 关卡 2/6 · " + L.name,
+           game.crawl ? "蜘蛛正沿蛛丝向屏幕外爬行,蛛网保持静止…" : L.flavor);
+  }
+  else if (game.idx === 2){                             // L3 太空失重
+    if (params.Gravity <= 0.5) game.l3t += dt; else game.l3t = 0;
+    l1 = "当前重力 " + params.Gravity.toFixed(1);
+    l2 = "失重保持 " + game.l3t.toFixed(1) + " / 5.0 秒";
+    tbShow("🕷️ 关卡 3/6 · " + L.name, L.flavor);
+    if (game.l3t >= 5) completeLevel();
+  }
+  else if (game.idx === 3){                             // L4 软网实验室
+    const soft = params.K <= 0.015 && params.Friction <= 0.01;
+    if (soft) game.l4t += dt;
+    else { game.l4t = 0; game.base = null; }
+    const armed = game.l4t >= 1.0;
+    if (armed && !game.base) game.base = lp;
+    l1 = "K " + params.K.toFixed(3) + " · 摩擦 " + params.Friction.toFixed(3);
+    l2 = "最大位移 " + game.maxDisp.toFixed(3) + " / 0.050";
+    tbShow("🕷️ 关卡 4/6 · " + L.name, L.flavor);
+    if (armed && game.base && game.maxDisp > 0.05) completeLevel();
+  }
+  else if (game.idx === 4){                             // L5 呼吸的网
+    pushHist("R1", params.R1);
+    game.sw = swingCount("R1", 0.02, 10);
+    l1 = "R1 " + params.R1.toFixed(3);
+    l2 = "往复 " + game.sw + " / 6(10 秒内)";
+    tbShow("🕷️ 关卡 5/6 · " + L.name, L.flavor);
+    if (game.sw >= 6) completeLevel();
+  }
+  else if (game.idx === 5){                             // L6 毕业:失重蹦迪
+    pushHist("MouseK", params.MouseK);
+    game.sw = swingCount("MouseK", 0.25, 10);
+    game.gOK = params.Gravity <= 0.5;
+    l1 = "重力 " + params.Gravity.toFixed(1);
+    l2 = "往复 " + game.sw + " / 6(10 秒内)";
+    tbShow("🕷️ 关卡 6/6 · " + L.name, L.flavor);
+    if (game.gOK && game.sw >= 6) completeLevel();
+  }
+  tbHintLive(l1, l2);
+}
+$("btnGame").addEventListener("click", () => {
+  game.on = !game.on;
+  $("btnGame").textContent = "🕷️ 关卡模式:" + (game.on ? "开" : "关");
+  $("btnGame").classList.toggle("on", game.on);
+  if (game.on){
+    armLevel(0);
+  } else {
+    tb.style.display = "none";
+    fx.style.display = "none"; fxActive = false;
+  }
+});
+
+/* ================= 控制 ================= */
+function reset(){ createBuffers(bufW, bufH); frame = 0; }
+function togglePause(){ paused = !paused; $("btnPause").textContent = paused ? "继续" : "暂停"; }
+$("btnPause").addEventListener("click", togglePause);
+$("btnReset").addEventListener("click", reset);
+$("panelToggle").addEventListener("click", () => {
+  const p = $("panel");
+  p.style.display = p.style.display === "none" ? "block" : "none";
+});
+window.addEventListener("keydown", e => {
+  if (e.code === "Space") { e.preventDefault(); togglePause(); }
+  else if (e.code === "KeyR") reset();
+  else if (e.code === "KeyP") $("panelToggle").click();
+});
+
+function bindSlider(id, out, fmt, set){
+  const s = $(id), v = $(out);
+  s.addEventListener("input", () => { const x = parseFloat(s.value); set(x); v.textContent = fmt(x); });
+}
+bindSlider("sSteps", "vSteps", x => String(x), x => { params.steps = x; });
+bindSlider("sScale", "vScale", x => x.toFixed(2) + "x", x => { params.scale = x; });
+bindSlider("sK",       "vK",       x => x.toFixed(3),      x => { params.K = x; });
+bindSlider("sFriction","vFriction", x => x.toFixed(3),      x => { params.Friction = x; });
+bindSlider("sGravity", "vGravity", x => x.toFixed(1),      x => { params.Gravity = x; });
+bindSlider("sR1",      "vR1",      x => x.toFixed(3),      x => { params.R1 = x; });
+bindSlider("sMouseK",  "vMouseK",  x => x.toFixed(2),      x => { params.MouseK = x; });
+
+/* ---------- 参数提示浮层 ---------- */
+const tipBox = document.createElement("div");
+tipBox.id = "tooltip";
+document.body.appendChild(tipBox);
+document.querySelectorAll("#panel .tip").forEach(b => {
+  const show = () => {
+    tipBox.textContent = b.dataset.tip;
+    tipBox.style.display = "block";
+    tipBox.style.left = "-9999px"; tipBox.style.top = "0px";   // 先离屏再测量
+    const r = b.getBoundingClientRect();
+    let x = r.right + 8, y = Math.max(6, r.top - 6);
+    if (x + tipBox.offsetWidth > innerWidth - 8) x = r.left - tipBox.offsetWidth - 8;
+    tipBox.style.left = x + "px";
+    tipBox.style.top  = Math.min(y, innerHeight - tipBox.offsetHeight - 6) + "px";
+  };
+  const hide = () => { tipBox.style.display = "none"; };
+  b.addEventListener("mouseenter", show);   // 悬停即显示
+  b.addEventListener("mouseleave", hide);
+  b.addEventListener("click", e => {        // 点击锁定/解锁(触屏友好)
+    e.stopPropagation();
+    if (tipBox.style.display === "block") hide(); else show();
+  });
+});
+$("cFloat").addEventListener("change", e => { params.floatBuf = e.target.checked; reset(); });
+
+/* ---------- 渲染 pass ---------- */
+let readIdx = 0;
+function runPass(prog, u, targetTex, w, h){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, targetTex ? fbo : null);
+  if (targetTex) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, targetTex, 0);
+  gl.viewport(0, 0, w, h);
+  gl.useProgram(prog);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texPair[readIdx]);
+  gl.uniform1i(u.iChannel0, 0);
+  const d = new Date();
+  gl.uniform3f(u.iResolution, w, h, 1);
+  gl.uniform1f(u.iTime, curTime);
+  gl.uniform1f(u.iTimeDelta, Math.min(0.05, paused ? 0 : dtGlobal / params.steps));  // 钳制大 dt,防物理发散
+  gl.uniform1f(u.iFrameRate, fps);
+  gl.uniform1i(u.iFrame, frame);
+  gl.uniform4f(u.iMouse, mouse[0], mouse[1], mouse[2], mouse[3]);
+  gl.uniform4f(u.iDate, d.getFullYear(), d.getMonth() + 1, d.getDate(),
+               d.getHours()*3600 + d.getMinutes()*60 + d.getSeconds() + d.getMilliseconds()/1000);
+  gl.uniform1f(u.iSampleRate, 48000);
+  gl.uniform3fv(u.iChannelResolution, new Float32Array([bufW, bufH, 1, 0,0,0, 0,0,0, 0,0,0]));
+  gl.uniform1fv(u.iChannelTime, new Float32Array(4));
+  // 物理参数 uniforms(Buffer A 用;Image 只用 uMouseK,其余 location 为 null 自动跳过)
+  if (u.K) gl.uniform1f(u.K, params.K);
+  if (u.Friction) gl.uniform1f(u.Friction, params.Friction);
+  if (u.Gravity) gl.uniform2f(u.Gravity, 0.0, -params.Gravity);
+  if (u.R1) gl.uniform1f(u.R1, params.R1);
+  if (u.uMouseK) gl.uniform1f(u.uMouseK, params.MouseK);
+  if (u.uSpiderAnx) gl.uniform1f(u.uSpiderAnx, game.anx);
+  if (u.uCrawl) {
+    gl.uniform1f(u.uCrawl, game.crawlPos || 0);
+    gl.uniform2f(u.uCrawlFrom, game.crawlFrom ? game.crawlFrom[0] : 0,
+                               game.crawlFrom ? game.crawlFrom[1] : 0);
+    const dv = game.crawlDirV || [1, 0];
+    gl.uniform2f(u.uCrawlDir, dv[0], dv[1]);
+    gl.uniform1f(u.uCrawlLen, 2.2);
+  }
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+
+/* ---------- 主循环 ---------- */
+let frame = 0, fps = 0, curTime = 0, lastNow = performance.now(), dtGlobal = 0;
+function loop(){
+  requestAnimationFrame(loop);
+  resize();
+  const now = performance.now();
+  const dt = Math.max((now - lastNow) / 1000, 1e-5);
+  lastNow = now;
+  fps = fps * 0.95 + (1 / dt) * 0.05;
+  dtGlobal = dt;
+  if (!paused) curTime += dt;
+
+  if (!paused) {
+    for (let i = 0; i < params.steps; i++) {
+      runPass(bufProg, bufU, texPair[1 - readIdx], bufW, bufH);  // Buffer A: Verlet 物理
+      readIdx = 1 - readIdx;
+      frame++;
+    }
+  }
+  if (game.on && !paused && game.phase === "play") { game.t += dt; gameUpdate(dt); }
+  if (fxActive) fxUpdate(dt);
+  runPass(imgProg, imgU, null, canvas.width, canvas.height);     // Image: 画蛛网与蜘蛛
+
+  diag.frames = frame; diag.fps = fps;
+  if (frame % 10 < params.steps) {
+    hud.style.display = "block";
+    hud.textContent =
+      "FPS " + fps.toFixed(1) + "   步 " + frame + "\n" +
+      "缓冲 " + bufW + "x" + bufH + " " + diag.bufFormat +
+      (paused ? "   [已暂停]" : "") + "\n" +
+      "空格=暂停  R=重置  P=面板  拖动=拉网";
+  }
+}
+
+/* ---------- 诊断钩子 ---------- */
+window.__reset = reset;
+window.__game = () => ({ on:game.on, idx:game.idx, phase:game.phase,
+  clicks:game.clicks, anx:+game.anx.toFixed(2), t:+game.t.toFixed(1),
+  spiderScr: game.spiderScr ? game.spiderScr.map(v=>Math.round(v)) : null,
+  avgDisp:+(game.avgDisp||0).toFixed(4), maxDisp:+(game.maxDisp||0).toFixed(4), clicked:game.clicked, crawl:game.crawl, sw:game.sw, gOK:game.gOK, l3t:+(game.l3t||0).toFixed(1), r1n:hist.R1.length });
+window.__gameOn = () => { $("btnGame").click(); };
+window.__gtick = n => {                 // 同步推进 n 帧(物理+关卡判定),供自动化测试
+  for (let i = 0; i < n; i++){
+    if (!paused && game.phase === "play"){
+      runPass(bufProg, bufU, texPair[1 - readIdx], bufW, bufH);
+      readIdx = 1 - readIdx; frame++;
+      game.t += 1/60; gameUpdate(1/60);
+    }
+  }
+  if (game.phase === "play" || game.phase === "done")
+    runPass(imgProg, imgU, null, canvas.width, canvas.height);
+  return frame;
+};
+window.__peek = () => {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texPair[readIdx], 0);
+  const heads = new Float32Array(50 * 4);
+  gl.readPixels(0, 0, 50, 1, gl.RGBA, gl.FLOAT, heads);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  let nan = 0, min = 1e9, max = -1e9, cx = 0, cy = 0, alive = 0;
+  for (let i = 0; i < 50; i++) {
+    const x = heads[i*4], y = heads[i*4+1];
+    if (Number.isNaN(x) || Number.isNaN(y)) nan++;
+    else { min = Math.min(min, x, y); max = Math.max(max, x, y); cx += x; cy += y; }
+    if (heads[i*4+3] > 0) alive++;
+  }
+  return { nan, alive, min: +min.toFixed(3), max: +max.toFixed(3),
+           centroid: [+(cx/50).toFixed(3), +(cy/50).toFixed(3)], glErr: gl.getError() };
+};
+window.__step = n => {
+  for (let i = 0; i < n; i++) {
+    runPass(bufProg, bufU, texPair[1 - readIdx], bufW, bufH);
+    readIdx = 1 - readIdx;
+    frame++;
+  }
+  runPass(imgProg, imgU, null, canvas.width, canvas.height);
+  return frame;
+};
+window.__mouse = (x, y, down) => {
+  const k = Math.min(window.devicePixelRatio || 1, 2) * params.scale;
+  const px = x * k, py = (canvas.clientHeight - y) * k;
+  mouse[0] = px; mouse[1] = py;
+  mouse[2] = down ? px : -Math.abs(mouse[2] || px);
+  mouse[3] = down ? py : -Math.abs(mouse[3] || py);
+  return [mouse[0], mouse[1], mouse[2], mouse[3]];
+};
+
+/* ---------- 启动 ---------- */
+resize();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

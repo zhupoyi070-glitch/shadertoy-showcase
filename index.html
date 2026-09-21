@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadertoy 本地复刻展 · Wormhood &amp; SpiderWeb &amp; Moorlands</title>
+<style>
+  :root {
+    --bg: #07070c;
+    --panel: rgba(255,255,255,0.035);
+    --line: rgba(255,255,255,0.09);
+    --text: #e9e9f0;
+    --muted: #9a9aac;
+    --amber: #e8a04c;   /* Wormhood 主题色 */
+    --green: #7ee787;   /* SpiderWeb 主题色 */
+    --paper: #d9c9ae;   /* Moorlands 主题色（炭笔纸面） */
+    --mono: Consolas, Menlo, "Courier New", monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(232,160,76,0.35); }
+
+  /* ---------- 顶部导航 ---------- */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    background: rgba(7,7,12,0.72);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  nav .logo {
+    font: bold 14px var(--mono); letter-spacing: 1px; color: var(--text);
+    text-decoration: none; display: flex; align-items: center; gap: 8px;
+  }
+  nav .logo .dot { width: 8px; height: 8px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--amber), var(--green)); }
+  nav .links { display: flex; gap: 22px; }
+  nav .links a {
+    color: var(--muted); text-decoration: none; font: 13px var(--mono);
+    transition: color .2s;
+  }
+  nav .links a:hover { color: #fff; }
+
+  /* ---------- Hero ---------- */
+  header {
+    position: relative; min-height: 92vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 120px 24px 60px;
+  }
+  #bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .8; }
+  header .inner { position: relative; z-index: 2; }
+  .eyebrow {
+    font: 12px var(--mono); letter-spacing: 4px; color: var(--amber);
+    margin-bottom: 18px; text-transform: uppercase;
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 64px); font-weight: 800; line-height: 1.15;
+    letter-spacing: 1px;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, var(--amber) 10%, #f0d9b0 40%, var(--green) 85%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub {
+    max-width: 640px; margin: 22px auto 0; color: var(--muted);
+    font-size: 15px; line-height: 1.9;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 30px; }
+  .chip {
+    font: 12px var(--mono); color: #cfcfda;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 16px; background: rgba(255,255,255,0.03);
+  }
+  .chip b { color: var(--amber); font-weight: normal; }
+  .stats {
+    display: flex; gap: 44px; justify-content: center; margin-top: 44px; flex-wrap: wrap;
+  }
+  .stat { text-align: center; }
+  .stat .n { font: bold 30px var(--mono); color: #fff; }
+  .stat .l { font: 12px var(--mono); color: var(--muted); margin-top: 4px; letter-spacing: 1px; }
+  .scrollhint {
+    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%);
+    font: 11px var(--mono); color: var(--muted); letter-spacing: 2px; z-index: 2;
+    animation: bob 2s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { transform: translate(-50%,0); } 50% { transform: translate(-50%,8px); } }
+
+  /* ---------- 作品区块 ---------- */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 0; }
+  section.project { padding: 70px 0 30px; }
+
+  .proj-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 26px; }
+  .proj-num {
+    font: bold 52px var(--mono); color: transparent;
+    -webkit-text-stroke: 1px rgba(255,255,255,0.22); line-height: 1;
+  }
+  .proj-title h2 { font-size: clamp(24px, 3.4vw, 36px); font-weight: 800; letter-spacing: .5px; }
+  .proj-title .en { font: 13px var(--mono); letter-spacing: 3px; margin-top: 6px; }
+  .p1 .proj-title .en { color: var(--amber); }
+  .p2 .proj-title .en { color: var(--green); }
+  .p3 .proj-title .en { color: var(--paper); }
+
+  .card {
+    display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap: 26px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 26px;
+  }
+  .card.p1c:hover { border-color: rgba(232,160,76,0.4); }
+  .card.p2c:hover { border-color: rgba(126,231,135,0.4); }
+  .card.p3c:hover { border-color: rgba(217,201,174,0.4); }
+  .card:hover { transition: border-color .3s; }
+
+  /* 预览窗口 */
+  .preview {
+    position: relative; aspect-ratio: 16/10; border-radius: 12px; overflow: hidden;
+    background: #000; border: 1px solid rgba(255,255,255,0.1);
+  }
+  .preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .cover {
+    position: absolute; inset: 0; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(232,160,76,0.12), transparent 55%),
+      radial-gradient(ellipse at 75% 80%, rgba(126,231,135,0.10), transparent 55%),
+      #0a0a12;
+    transition: background .3s;
+  }
+  .cover .play {
+    width: 74px; height: 74px; border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; color: #fff;
+    background: rgba(255,255,255,0.06);
+    transition: transform .25s, background .25s;
+  }
+  .cover:hover .play { transform: scale(1.1); background: rgba(255,255,255,0.14); }
+  .cover .t1 { font: bold 17px var(--mono); color: #fff; letter-spacing: 1px; }
+  .cover .t2 { font: 12px var(--mono); color: var(--muted); }
+  .preview .kbdhint {
+    position: absolute; right: 10px; bottom: 8px; z-index: 3;
+    font: 11px var(--mono); color: rgba(255,255,255,0.55);
+    background: rgba(0,0,0,0.5); border-radius: 5px; padding: 3px 8px;
+    pointer-events: none; display: none;
+  }
+  .preview.loaded .kbdhint { display: block; }
+  .preview .tools {
+    position: absolute; right: 10px; top: 8px; z-index: 3; display: none; gap: 8px;
+  }
+  .preview.loaded .tools { display: flex; }
+  .tools a {
+    font: 11px var(--mono); color: #eee; text-decoration: none;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 5px; padding: 4px 10px; transition: background .2s;
+  }
+  .tools a:hover { background: rgba(255,255,255,0.15); }
+
+  /* 信息列 */
+  .info { display: flex; flex-direction: column; }
+  .origin {
+    display: inline-flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+  }
+  .tag {
+    font: 11px var(--mono); padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.03);
+  }
+  .p1 .tag.hl { color: var(--amber); border-color: rgba(232,160,76,0.4); }
+  .p2 .tag.hl { color: var(--green); border-color: rgba(126,231,135,0.4); }
+  .p3 .tag.hl { color: var(--paper); border-color: rgba(217,201,174,0.4); }
+  .desc { color: #c6c6d4; font-size: 14.5px; line-height: 1.95; margin-bottom: 20px; }
+  .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-bottom: 22px; }
+  .f {
+    display: flex; gap: 9px; align-items: flex-start;
+    font-size: 12.5px; line-height: 1.6; color: var(--muted);
+  }
+  .f .ico { flex: 0 0 auto; font-size: 15px; }
+  .f b { color: #e3e3ec; font-weight: 600; display: block; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+  .btn {
+    font: 13px var(--mono); text-decoration: none; cursor: pointer;
+    padding: 10px 18px; border-radius: 8px; border: 1px solid var(--line);
+    color: var(--text); background: rgba(255,255,255,0.05);
+    transition: all .2s; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .btn:hover { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
+  .btn.primary1 { background: var(--amber); border-color: var(--amber); color: #16100a; font-weight: bold; }
+  .btn.primary1:hover { background: #f5b264; }
+  .btn.primary2 { background: var(--green); border-color: var(--green); color: #0a1810; font-weight: bold; }
+  .btn.primary2:hover { background: #93f0a0; }
+  .btn.primary3 { background: var(--paper); border-color: var(--paper); color: #1a160e; font-weight: bold; }
+  .btn.primary3:hover { background: #eadcc0; }
+
+  /* ---------- 技术说明 ---------- */
+  section.tech { padding: 80px 0 30px; }
+  section.tech h2 {
+    font-size: 26px; font-weight: 800; margin-bottom: 8px; text-align: center;
+  }
+  section.tech .lead { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 34px; }
+  .techgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .t {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 18px; transition: transform .25s, border-color .25s;
+  }
+  .t:hover { transform: translateY(-4px); border-color: rgba(232,160,76,0.4); }
+  .t .ic { font-size: 22px; margin-bottom: 10px; }
+  .t h3 { font-size: 14.5px; margin-bottom: 8px; }
+  .t p { font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+  .t code {
+    font: 11.5px var(--mono); color: var(--amber);
+    background: rgba(232,160,76,0.1); padding: 1px 5px; border-radius: 4px;
+  }
+
+  /* ---------- 页脚 ---------- */
+  footer {
+    margin-top: 90px; border-top: 1px solid var(--line);
+    padding: 34px 24px 44px; text-align: center;
+  }
+  footer .l1 { font: 13px var(--mono); color: var(--muted); line-height: 2; }
+  footer .l1 a { color: var(--muted); }
+  footer .copy { font: 11.5px var(--mono); color: #62626f; margin-top: 14px; line-height: 1.9; }
+
+  /* ---------- 滚动显现 ---------- */
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
+  .reveal.visible { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .scrollhint { animation: none; }
+  }
+
+  @media (max-width: 900px) {
+    .card { grid-template-columns: 1fr; }
+    .techgrid { grid-template-columns: repeat(2, 1fr); }
+    .feat { grid-template-columns: 1fr; }
+    nav .links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="#top"><span class="dot"></span>SHADERTOY 本地复刻展</a>
+  <div class="links">
+    <a href="#p1">01 · Wormhood</a>
+    <a href="#p2">02 · SpiderWeb</a>
+    <a href="#p3">03 · Moorlands</a>
+    <a href="#tech">技术说明</a>
+  </div>
+</nav>
+
+<header id="top">
+  <canvas id="bg"></canvas>
+  <div class="inner">
+    <div class="eyebrow">GLSL · WebGL2 · Realtime</div>
+    <h1>三个 Shadertoy 经典作品的<br><span class="grad">本地复刻与增强</span></h1>
+    <p class="sub">
+      蠕虫隧道、蛛网布料物理与荒原排线速写 —— 全部由 GPU 着色器实时渲染，
+      单文件、零依赖，克隆到本地双击即玩。下方可直接加载实时画面体验。
+    </p>
+    <div class="chips">
+      <span class="chip"><b>▶</b> WebGL2 实时渲染</span>
+      <span class="chip"><b>▶</b> 单文件 · 零依赖</span>
+      <span class="chip"><b>▶</b> 真实物理模拟</span>
+      <span class="chip"><b>▶</b> 实时参数面板</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n">3</div><div class="l">复刻作品</div></div>
+      <div class="stat"><div class="n">6</div><div class="l">游戏关卡</div></div>
+      <div class="stat"><div class="n">50+</div><div class="l">可调参数</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">外部依赖</div></div>
+    </div>
+  </div>
+  <div class="scrollhint">▼ SCROLL</div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ 作品一 Wormhood ============ -->
+  <section class="project p1 reveal" id="p1">
+    <div class="proj-head">
+      <div class="proj-num">01</div>
+      <div class="proj-title">
+        <h2>Wormhood · 蠕虫隧道</h2>
+        <div class="en">— INFINITE WORM TUNNEL —</div>
+      </div>
+    </div>
+    <div class="card p1c">
+      <div class="preview" data-src="wormhood-shadertoy/index.html">
+        <div class="cover" onclick="loadPreview(this)">
+          <div class="play">▶</div>
+          <div class="t1">WORMHOOD</div>
+          <div class="t2">点击加载 WebGL 实时画面（可在框内直接游玩）</div>
+        </div>
+        <div class="kbdhint">⌨ 点击画面获取焦点后可用：空格暂停 · R 重置 · F 全屏</div>
+        <div class="tools">
+          <a href="wormhood-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
+        </div>
+      </div>
+      <div class="info">
+        <div class="origin">
+          <span class="tag hl">复刻自 Shadertoy «MdcSRj»</span>
+          <span class="tag">原作者 finalman · 2016</span>
+          <span class="tag">增强版</span>
+        </div>
+        <p class="desc">
+          无数发光的虫子在幽暗管腔中蠕动穿行。本项目在本地忠实复刻原作画风的
+          同时，扩展了完整的实时参数系统与多种氛围效果——从虫群透明度曲线、
+          壁面蹦床弹跳，到手电筒探索模式与信号干扰，一切皆可实时调节。
+        </p>
+        <div class="feat">
+          <div class="f"><span class="ico">🎛️</span><span><b>30+ 参数滑块</b>虫群 / 管腔 / 镜头实时调节</span></div>
+          <div class="f"><span class="ico">🔦</span><span><b>手电筒模式</b>鼠标照明 · 蠕动光边 · 颗粒闪烁</span></div>
+          <div class="f"><span class="ico">🫧</span><span><b>穿透式透明度</b>近处渐隐 · 中距清晰 · 远处溶雾</span></div>
+          <div class="f"><span class="ico">🌀</span><span><b>壁面蹦床</b>流动噪声驱动的此起彼伏弹跳</span></div>
+          <div class="f"><span class="ico">📺</span><span><b>氛围特效</b>管腔挤压 · 手持晃动 · 信号干扰</span></div>
+          <div class="f"><span class="ico">⌨️</span><span><b>预设与快捷键</b>默认 / 原版画风一键切换</span></div>
+        </div>
+        <div class="btns">
+          <a class="btn" href="https://github.com/Knighfff/wormhood-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+          <a class="btn" href="wormhood-shadertoy/wormhood.frag" target="_blank" rel="noopener">查看 GLSL 源码</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 作品二 SpiderWeb ============ -->
+  <section class="project p2 reveal" id="p2">
+    <div class="proj-head">
+      <div class="proj-num">02</div>
+      <div class="proj-title">
+        <h2>SpiderWeb · 蛛网布料物理</h2>
+        <div class="en">— CLOTH PHYSICS ON GPU —</div>
+      </div>
+    </div>
+    <div class="card p2c">
+      <div class="preview" data-src="spiderweb-shadertoy/index.html">
+        <div class="cover" onclick="loadPreview(this)">
+          <div class="play">▶</div>
+          <div class="t1">SPIDERWEB</div>
+          <div class="t2">点击加载 WebGL 实时画面（按住鼠标可拉扯蛛网）</div>
+        </div>
+        <div class="kbdhint">⌨ 点击画面获取焦点后可用：空格暂停 · R 重置 · P 参数面板</div>
+        <div class="tools">
+          <a href="spiderweb-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
+        </div>
+      </div>
+      <div class="info">
+        <div class="origin">
+          <span class="tag hl">复刻自 Shadertoy «4fc3zf»</span>
+          <span class="tag">原作者 middle</span>
+          <span class="tag">关卡模式增强</span>
+        </div>
+        <p class="desc">
+          一只白蜘蛛挂在真实布料物理模拟的蛛网上：10×7 节点网格做 Verlet 积分，
+          胡克定律弹簧约束，带重力、摩擦与回弹，8 只脚被弹簧拉向身体质心。
+          按住鼠标即可拉扯蛛网——全部由 GPU 着色器实时计算，并内置 6 关物理教学模式。
+        </p>
+        <div class="feat">
+          <div class="f"><span class="ico">🕸️</span><span><b>真实布料物理</b>Verlet 积分 + 胡克定律弹簧</span></div>
+          <div class="f"><span class="ico">🖱️</span><span><b>鼠标拉扯交互</b>按住拖动，蛛网与蜘蛛实时响应</span></div>
+          <div class="f"><span class="ico">🎮</span><span><b>6 关教学模式</b>悬念提示 + 两档引导，不可跳关</span></div>
+          <div class="f"><span class="ico">🎓</span><span><b>通关物理讲解</b>教学对话框 + 马赛克像素烟花</span></div>
+          <div class="f"><span class="ico">🎛️</span><span><b>物理参数面板</b>刚度 / 摩擦 / 重力 / 网距实时调</span></div>
+          <div class="f"><span class="ico">⚡</span><span><b>GPU 三 Pass</b>Buffer A 物理 ping-pong + Image</span></div>
+        </div>
+        <div class="btns">
+          <a class="btn" href="https://github.com/zhupoyi070-glitch/spiderweb-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+          <a class="btn primary2" href="https://zhupoyi070-glitch.github.io/spiderweb-shadertoy/" target="_blank" rel="noopener">在线版 · 打开即玩 ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 作品三 Moorlands ============ -->
+  <section class="project p3 reveal" id="p3">
+    <div class="proj-head">
+      <div class="proj-num">03</div>
+      <div class="proj-title">
+        <h2>Moorlands · 荒原排线速写</h2>
+        <div class="en">— CHARCOAL SKETCH ON THE MOOR —</div>
+      </div>
+    </div>
+    <div class="card p3c">
+      <div class="preview" data-src="shadertoy-fX2GRG/original-pure.html">
+        <div class="cover" onclick="loadPreview(this)">
+          <div class="play">▶</div>
+          <div class="t1">MOORLANDS</div>
+          <div class="t2">点击加载 WebGL 实时画面（根须生物 · WASD 可操控爬行）</div>
+        </div>
+        <div class="kbdhint">⌨ 点击画面获取焦点后：WASD/方向键 爬行 · R 复位 · 空格 暂停</div>
+        <div class="tools">
+          <a href="shadertoy-fX2GRG/original-pure.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
+        </div>
+      </div>
+      <div class="info">
+        <div class="origin">
+          <span class="tag hl">复刻自 Shadertoy «fX2GRG»</span>
+          <span class="tag">原作者 PrzemyslawZaworski</span>
+          <span class="tag">三种形态</span>
+        </div>
+        <p class="desc">
+          光线步进渲染的荒原上，整个画面被实时生成的边缘排线覆盖，如同一幅会动的
+          炭笔速写。更新后的默认入口是根须生物版：人形生物替换为丛生根须的四足生物，
+          可用 WASD / 方向键操控它以节肢步态爬行——按住越久步频越快。另有
+          人形·参数版与铅笔圈线的「不安静物」绘画版两种形态。
+        </p>
+        <div class="feat">
+          <div class="f"><span class="ico">🌿</span><span><b>根须生物 · 默认入口</b>WASD 操控节肢步态爬行</span></div>
+          <div class="f"><span class="ico">🖋️</span><span><b>边缘排线风格</b>光线步进场景实时炭笔描边</span></div>
+          <div class="f"><span class="ico">🎛️</span><span><b>实时参数面板</b>密度 / 抖动 / 卷曲 / 帧数上限</span></div>
+          <div class="f"><span class="ico">🎨</span><span><b>绘画改编版</b>art.html 永远画不完的「不安静物」</span></div>
+          <div class="f"><span class="ico">🚶</span><span><b>人形·参数版</b>original.html 荒原行者漫步</span></div>
+          <div class="f"><span class="ico">📸</span><span><b>快照机制</b>snapshot.bat 存档 · restore.bat 回溯</span></div>
+        </div>
+        <div class="btns">
+          <a class="btn" href="https://github.com/haripandesu/shadertoy-fX2GRG" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+          <a class="btn primary3" href="shadertoy-fX2GRG/art.html" target="_blank" rel="noopener">绘画版 · 不安静物 ↗</a>
+          <a class="btn" href="shadertoy-fX2GRG/original.html" target="_blank" rel="noopener">人形·参数版 ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 技术说明 ============ -->
+  <section class="tech reveal" id="tech">
+    <h2>技术说明</h2>
+    <p class="lead">三个项目共用一套 Shadertoy 兼容运行时，在浏览器中直接编译执行 GLSL 着色器</p>
+    <div class="techgrid">
+      <div class="t">
+        <div class="ic">🧩</div>
+        <h3>Shadertoy 兼容运行时</h3>
+        <p>提供 <code>mainImage</code> / <code>iTime</code> / <code>iResolution</code> / <code>iMouse</code> 等全套 uniforms，原作 shader 几乎零改动即可运行。</p>
+      </div>
+      <div class="t">
+        <div class="ic">🔁</div>
+        <h3>多 Pass 管线</h3>
+        <p>Buffer A 自反馈 ping-pong 做物理模拟，Image 负责最终成像，Common 共享宏自动注入到每个 pass。</p>
+      </div>
+      <div class="t">
+        <div class="ic">🔢</div>
+        <h3>浮点缓冲</h3>
+        <p>节点状态存于 <code>RGBA16F</code> 纹理（xy 当前位置 / zw 上一帧位置），Verlet 积分求速度必需，自动请求扩展。</p>
+      </div>
+      <div class="t">
+        <div class="ic">🛡️</div>
+        <h3>稳健性修复</h3>
+        <p>length 下限防 0/0 NaN 污染、位置 clamp 防发散、<code>iTimeDelta</code> 钳制 50ms 防标签页节流后物理爆炸。</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="l1">
+    <a href="https://github.com/Knighfff/wormhood-shadertoy" target="_blank" rel="noopener">github.com/Knighfff/wormhood-shadertoy</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/zhupoyi070-glitch/spiderweb-shadertoy" target="_blank" rel="noopener">github.com/zhupoyi070-glitch/spiderweb-shadertoy</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/haripandesu/shadertoy-fX2GRG" target="_blank" rel="noopener">github.com/haripandesu/shadertoy-fX2GRG</a>
+  </div>
+  <div class="copy">
+    Wormhood 原作 © finalman（Shadertoy MdcSRj） · SpiderWeb 原作 © middle（Shadertoy 4fc3zf） · Moorlands 原作 © PrzemyslawZaworski（Shadertoy fX2GRG）<br>
+    原始 shader 版权归原作者所有，本项目仅作学习交流用途 · 本地双击 index.html 即可运行，无需服务器与联网
+  </div>
+</footer>
+
+<script>
+/* ---- 惰性加载预览 iframe ---- */
+function loadPreview(cover) {
+  var box = cover.parentElement;
+  if (box.querySelector('iframe')) return;
+  var ifr = document.createElement('iframe');
+  ifr.src = box.dataset.src;
+  ifr.allow = 'fullscreen';
+  ifr.setAttribute('allowfullscreen', '');
+  box.appendChild(ifr);
+  box.classList.add('loaded');
+  cover.style.display = 'none';
+}
+
+/* ---- Hero 背景：漂移粒子 + 连线（蠕虫 × 蛛网意象） ---- */
+(function () {
+  var cv = document.getElementById('bg');
+  if (!cv || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var ctx = cv.getContext('2d');
+  if (!ctx) return;
+  var W, H, pts = [], mouse = { x: -9e3, y: -9e3 };
+  var COLORS = ['232,160,76', '126,231,135', '200,200,220'];
+  var N = 70;
+
+  function resize() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function init() {
+    pts = [];
+    for (var i = 0; i < N; i++) {
+      pts.push({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - .5) * .35, vy: (Math.random() - .5) * .35,
+        r: Math.random() * 1.6 + .6,
+        c: COLORS[(Math.random() * COLORS.length) | 0]
+      });
+    }
+  }
+  function step() {
+    ctx.clearRect(0, 0, W, H);
+    var i, j, p, q, dx, dy, d;
+    for (i = 0; i < pts.length; i++) {
+      p = pts[i];
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < -20) p.x = W + 20; if (p.x > W + 20) p.x = -20;
+      if (p.y < -20) p.y = H + 20; if (p.y > H + 20) p.y = -20;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, 6.2832);
+      ctx.fillStyle = 'rgba(' + p.c + ',0.75)';
+      ctx.fill();
+    }
+    for (i = 0; i < pts.length; i++) {
+      for (j = i + 1; j < pts.length; j++) {
+        p = pts[i]; q = pts[j];
+        dx = p.x - q.x; dy = p.y - q.y;
+        d = dx * dx + dy * dy;
+        if (d < 130 * 130) {
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y);
+          ctx.strokeStyle = 'rgba(' + p.c + ',' + (0.10 * (1 - d / 16900)).toFixed(3) + ')';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+      dx = p.x - mouse.x; dy = p.y - mouse.y;
+      d = dx * dx + dy * dy;
+      if (d < 190 * 190) {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y);
+        ctx.strokeStyle = 'rgba(232,160,76,' + (0.22 * (1 - d / 36100)).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+    if (!document.hidden) requestAnimationFrame(step);
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) requestAnimationFrame(step);
+  });
+  window.addEventListener('mousemove', function (e) {
+    var rc = cv.getBoundingClientRect();
+    mouse.x = e.clientX - rc.left; mouse.y = e.clientY - rc.top;
+  });
+  window.addEventListener('resize', function () { resize(); init(); });
+  resize(); init(); step();
+})();
+
+/* ---- 滚动显现（IntersectionObserver + 滚动监听双保险） ---- */
+(function () {
+  var els = document.querySelectorAll('.reveal');
+  function check() {
+    var vh = window.innerHeight;
+    els.forEach(function (el) {
+      var r = el.getBoundingClientRect();
+      if (r.top < vh * 0.94 && r.bottom > 0) el.classList.add('visible');
+    });
+  }
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('visible'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.08 });
+    els.forEach(function (el) { io.observe(el); });
+  }
+  window.addEventListener('scroll', check, { passive: true });
+  window.addEventListener('resize', check);
+  check();
+  setTimeout(check, 400);
+  setTimeout(check, 1200);
+})();
+</script>
+</body>
+</html>
