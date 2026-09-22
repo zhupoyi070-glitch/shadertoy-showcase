@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shadertoy 本地复刻展 · Wormhood &amp; SpiderWeb &amp; Moorlands</title>
+<title>持续偏移 · CONTINUOUS DEVIATION · Shadertoy 本地复刻展</title>
 <style>
   :root {
     --bg: #07070c;
@@ -57,7 +57,7 @@
   #bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .8; }
   header .inner { position: relative; z-index: 2; }
   .eyebrow {
-    font: 12px var(--mono); letter-spacing: 4px; color: var(--amber);
+    font: 12px var(--mono); letter-spacing: 4px; color: #85858f;
     margin-bottom: 18px; text-transform: uppercase;
   }
   h1 {
@@ -92,34 +92,153 @@
   }
   @keyframes bob { 0%,100% { transform: translate(-50%,0); } 50% { transform: translate(-50%,8px); } }
 
-  /* ---------- 作品区块 ---------- */
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 0; }
-  section.project { padding: 70px 0 30px; }
+  /* ---------- 首页闸门 v2：点击进入展厅（Apple 式过渡） ---------- */
+  body.gate { overflow: hidden; height: 100vh; }
+  nav { transition: opacity .7s ease; }
+  body.gate nav { opacity: 0; pointer-events: none; }
+  body.gate header { min-height: 100vh; }
 
-  .proj-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 26px; }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(28px); filter: blur(10px); }
+    to   { opacity: 1; transform: none; filter: blur(0); }
+  }
+  body.gate .eyebrow  { animation: riseIn .9s cubic-bezier(.16,1,.3,1) .15s backwards; }
+  body.gate h1        { animation: riseIn 1s  cubic-bezier(.16,1,.3,1) .4s  backwards; }
+  body.gate .sub      { animation: riseIn 1s  cubic-bezier(.16,1,.3,1) .7s  backwards; }
+
+  .gate-cta {
+    margin-top: 0; display: flex; flex-direction: column; align-items: center;
+    max-height: 0; opacity: 0; overflow: hidden;
+    transform: translateY(18px); filter: blur(8px);
+    transition: max-height 1s cubic-bezier(.16,1,.3,1), margin-top 1s cubic-bezier(.16,1,.3,1),
+                opacity .9s ease .12s, transform .9s cubic-bezier(.16,1,.3,1) .1s, filter .9s ease .12s;
+  }
+  .gate-cta.open { max-height: 180px; margin-top: 44px; opacity: 1; transform: none; filter: blur(0); }
+  .gate-btn {
+    cursor: pointer; border: 1px solid rgba(255,255,255,.14); border-radius: 999px;
+    font: bold 15px var(--mono); letter-spacing: 8px; text-indent: 8px;
+    color: #c9c9d4; padding: 18px 52px;
+    background: linear-gradient(100deg, #23232c, #3a3a45 60%, #23232c);
+    background-size: 200% 100%;
+    transition: transform .45s cubic-bezier(.16,1,.3,1), box-shadow .45s ease, background-position .6s ease;
+    animation: sonar 2.8s ease-out infinite;
+  }
+  .gate-btn:hover {
+    transform: translateY(-3px) scale(1.04); background-position: 100% 0;
+    box-shadow: 0 14px 44px rgba(0,0,0,.65);
+  }
+  .gate-btn:active { transform: translateY(-1px) scale(.98); }
+  @keyframes sonar {
+    0%   { box-shadow: 0 0 0 0 rgba(180,180,195,.28); }
+    70%  { box-shadow: 0 0 0 18px rgba(180,180,195,0); }
+    100% { box-shadow: 0 0 0 0 rgba(180,180,195,0); }
+  }
+  .gate-cap { margin-top: 18px; font: 11px var(--mono); letter-spacing: 3px; color: var(--muted); }
+
+  /* 点击后：放大 + 模糊 + 淡出的「穿越」过渡 */
+  header .inner, #bg {
+    transition: transform .95s cubic-bezier(.16,1,.3,1), opacity .7s ease, filter .95s cubic-bezier(.16,1,.3,1);
+  }
+  body.leaving header .inner { transform: scale(1.16); opacity: 0; filter: blur(18px); }
+  body.leaving #bg { transform: scale(1.24); opacity: .28; }
+  body.leaving .gate-btn { pointer-events: none; }
+
+  /* 进入后：技术信息层才浮现 */
+  .enter-only {
+    opacity: 0; transform: translateY(14px);
+    transition: opacity .8s ease .5s, transform .8s ease .5s; pointer-events: none;
+  }
+  body.entered .enter-only { opacity: 1; transform: none; pointer-events: auto; }
+  body.entered .gate-cta { display: none; }
+
+  /* ---------- 封面标题「持续偏移」：灰色 + 四字持续漂移 ---------- */
+  h1 { color: #a6a6b2; }
+  .title-btn {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    font: inherit; color: inherit; letter-spacing: 6px; text-indent: 6px;
+    transition: letter-spacing .7s cubic-bezier(.16,1,.3,1), color .6s ease, text-shadow .6s ease;
+  }
+  .title-btn:hover { letter-spacing: 12px; }
+  .title-btn:focus-visible { outline: 1px dashed rgba(255,255,255,.4); outline-offset: 10px; }
+  .title-btn .ch { display: inline-block; animation: drift 5s ease-in-out infinite alternate; }
+  .title-btn .ch:nth-child(1) { animation-duration: 4.6s; animation-delay: -.7s; }
+  .title-btn .ch:nth-child(2) { animation-duration: 5.8s; animation-delay: -2.3s; }
+  .title-btn .ch:nth-child(3) { animation-duration: 4.2s; animation-delay: -1.5s; }
+  .title-btn .ch:nth-child(4) { animation-duration: 6.2s; animation-delay: -3.1s; }
+  @keyframes drift {
+    0%   { transform: translate(0, 0); }
+    30%  { transform: translate(2.5px, -3px); }
+    60%  { transform: translate(-2.5px, 2px); }
+    100% { transform: translate(1.5px, -1px); }
+  }
+  .title-btn.revealed { color: #cfcfda; text-shadow: 0 0 26px rgba(255,255,255,.18); }
+  .title-btn.revealed .ch { animation-play-state: paused; }
+  .en-title {
+    display: block; margin-top: 16px;
+    font: 13px var(--mono); letter-spacing: 10px; text-indent: 10px; font-weight: normal;
+    color: #86868f;
+  }
+
+  /* 副文案：点击标题后才「显影」 */
+  .title-hint {
+    margin-top: 20px; font: 11px var(--mono); letter-spacing: 3px; color: #6f6f7c;
+    max-height: 40px; overflow: hidden;
+    transition: opacity .6s ease, max-height .7s cubic-bezier(.16,1,.3,1), margin .7s cubic-bezier(.16,1,.3,1);
+  }
+  .title-hint.gone { opacity: 0; max-height: 0; margin-top: 0; }
+  .cover-sub {
+    max-width: 640px; margin: 0 auto;
+    max-height: 0; opacity: 0; overflow: hidden;
+    transform: translateY(18px); filter: blur(8px);
+    transition: max-height 1s cubic-bezier(.16,1,.3,1), margin-top 1s cubic-bezier(.16,1,.3,1),
+                opacity .9s ease .12s, transform .9s cubic-bezier(.16,1,.3,1) .1s, filter .9s ease .12s;
+  }
+  .cover-sub.open { max-height: 200px; margin-top: 26px; opacity: 1; transform: none; filter: blur(0); }
+  .cover-sub p { color: var(--muted); font-size: 15px; line-height: 1.9; }
+  .cover-sub p b { color: #d9d9e4; font-weight: 600; }
+
+  /* ---------- 全站光标：微光点 + 延迟跟随的模糊光斑轨迹 ---------- */
+  body.has-cursor,
+  body.has-cursor a,
+  body.has-cursor button { cursor: none; }
+  .cursor-dot {
+    position: fixed; left: 0; top: 0; z-index: 999; pointer-events: none;
+    width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+    background: #ecebf5; opacity: 0;
+    box-shadow: 0 0 12px 3px rgba(233,233,248,.95), 0 0 38px 14px rgba(205,205,235,.4);
+    transition: width .18s ease, height .18s ease, margin .18s ease;
+  }
+  .cursor-dot.down { width: 16px; height: 16px; margin: -8px 0 0 -8px; }
+  .cursor-trail {
+    position: fixed; left: 0; top: 0; z-index: 998; pointer-events: none;
+    border-radius: 50%; opacity: 0; filter: blur(1px);
+    background: radial-gradient(circle, rgba(218,218,242,.55) 0%, rgba(218,218,242,0) 72%);
+  }
+
+
+  /* ---------- 作品区块 ---------- */
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 40px 24px 0; }
+  section.project { padding: 90px 0 30px; }
+
+  .proj-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 24px; }
   .proj-num {
     font: bold 52px var(--mono); color: transparent;
     -webkit-text-stroke: 1px rgba(255,255,255,0.22); line-height: 1;
   }
-  .proj-title h2 { font-size: clamp(24px, 3.4vw, 36px); font-weight: 800; letter-spacing: .5px; }
+  .proj-title h2 { font-size: clamp(26px, 3.6vw, 40px); font-weight: 800; letter-spacing: .5px; }
   .proj-title .en { font: 13px var(--mono); letter-spacing: 3px; margin-top: 6px; }
   .p1 .proj-title .en { color: var(--amber); }
   .p2 .proj-title .en { color: var(--green); }
   .p3 .proj-title .en { color: var(--paper); }
 
-  .card {
-    display: grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap: 26px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-    padding: 26px;
-  }
-  .card.p1c:hover { border-color: rgba(232,160,76,0.4); }
-  .card.p2c:hover { border-color: rgba(126,231,135,0.4); }
-  .card.p3c:hover { border-color: rgba(217,201,174,0.4); }
-  .card:hover { transition: border-color .3s; }
+  .intro { max-width: 900px; margin-bottom: 26px; }
+  .intro p { color: #c6c6d4; font-size: 15px; line-height: 2.05; margin-bottom: 12px; }
+  .intro p:last-child { margin-bottom: 0; }
 
-  /* 预览窗口 */
+  /* 预览窗口（全宽大窗） */
   .preview {
-    position: relative; aspect-ratio: 16/10; border-radius: 12px; overflow: hidden;
+    position: relative; height: min(80vh, 780px); min-height: 420px;
+    border-radius: 14px; overflow: hidden;
     background: #000; border: 1px solid rgba(255,255,255,0.1);
   }
   .preview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -161,27 +280,7 @@
   }
   .tools a:hover { background: rgba(255,255,255,0.15); }
 
-  /* 信息列 */
-  .info { display: flex; flex-direction: column; }
-  .origin {
-    display: inline-flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
-  }
-  .tag {
-    font: 11px var(--mono); padding: 4px 10px; border-radius: 6px;
-    border: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,0.03);
-  }
-  .p1 .tag.hl { color: var(--amber); border-color: rgba(232,160,76,0.4); }
-  .p2 .tag.hl { color: var(--green); border-color: rgba(126,231,135,0.4); }
-  .p3 .tag.hl { color: var(--paper); border-color: rgba(217,201,174,0.4); }
-  .desc { color: #c6c6d4; font-size: 14.5px; line-height: 1.95; margin-bottom: 20px; }
-  .feat { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-bottom: 22px; }
-  .f {
-    display: flex; gap: 9px; align-items: flex-start;
-    font-size: 12.5px; line-height: 1.6; color: var(--muted);
-  }
-  .f .ico { flex: 0 0 auto; font-size: 15px; }
-  .f b { color: #e3e3ec; font-weight: 600; display: block; }
-  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
   .btn {
     font: 13px var(--mono); text-decoration: none; cursor: pointer;
     padding: 10px 18px; border-radius: 8px; border: 1px solid var(--line);
@@ -231,17 +330,24 @@
   @media (prefers-reduced-motion: reduce) {
     .reveal { opacity: 1; transform: none; transition: none; }
     .scrollhint { animation: none; }
+    body.gate .eyebrow, body.gate h1, body.gate .sub, body.gate .gate-cta { animation: none; }
+    .gate-btn { animation: none; }
+    header .inner, #bg, .enter-only { transition: none; }
+    .enter-only { opacity: 1; transform: none; }
+    .title-btn .ch { animation: none; }
+    .cover-sub { max-height: 200px; margin-top: 26px; opacity: 1; transform: none; filter: none; transition: none; }
+    .gate-cta { max-height: 180px; margin-top: 44px; opacity: 1; transform: none; filter: none; transition: none; }
+    .title-hint { display: none; }
   }
 
   @media (max-width: 900px) {
-    .card { grid-template-columns: 1fr; }
+    .preview { height: 56vh; min-height: 320px; }
     .techgrid { grid-template-columns: repeat(2, 1fr); }
-    .feat { grid-template-columns: 1fr; }
     nav .links { display: none; }
   }
 </style>
 </head>
-<body>
+<body class="gate">
 
 <nav>
   <a class="logo" href="#top"><span class="dot"></span>SHADERTOY 本地复刻展</a>
@@ -256,26 +362,35 @@
 <header id="top">
   <canvas id="bg"></canvas>
   <div class="inner">
-    <div class="eyebrow">GLSL · WebGL2 · Realtime</div>
-    <h1>三个 Shadertoy 经典作品的<br><span class="grad">本地复刻与增强</span></h1>
-    <p class="sub">
-      蠕虫隧道、蛛网布料物理与荒原排线速写 —— 全部由 GPU 着色器实时渲染，
-      单文件、零依赖，克隆到本地双击即玩。下方可直接加载实时画面体验。
-    </p>
-    <div class="chips">
+    <div class="eyebrow">Something stirs below · GLSL / WebGL2 / Realtime</div>
+    <h1>
+      <button class="title-btn" id="titleBtn" type="button" aria-expanded="false" aria-controls="coverSub">
+        <span class="ch">持</span><span class="ch">续</span><span class="ch">偏</span><span class="ch">移</span>
+      </button>
+      <span class="en-title">CONTINUOUS DEVIATION</span>
+    </h1>
+    <div class="title-hint" id="titleHint">点击标题 · 让不安显影</div>
+    <div class="cover-sub" id="coverSub">
+      <p>从空间的偏移，到结构的失稳，再到运动的失序，<b>不安</b>在持续的移动中逐渐显现。</p>
+    </div>
+    <div class="gate-cta" id="gateCta">
+      <button class="gate-btn" id="enterBtn" type="button">进入暗面</button>
+      <div class="gate-cap">BEGIN THE DESCENT —— 它们已在暗处等你</div>
+    </div>
+    <div class="chips enter-only">
       <span class="chip"><b>▶</b> WebGL2 实时渲染</span>
       <span class="chip"><b>▶</b> 单文件 · 零依赖</span>
       <span class="chip"><b>▶</b> 真实物理模拟</span>
       <span class="chip"><b>▶</b> 实时参数面板</span>
     </div>
-    <div class="stats">
+    <div class="stats enter-only">
       <div class="stat"><div class="n">3</div><div class="l">复刻作品</div></div>
       <div class="stat"><div class="n">6</div><div class="l">游戏关卡</div></div>
       <div class="stat"><div class="n">50+</div><div class="l">可调参数</div></div>
       <div class="stat"><div class="n">0</div><div class="l">外部依赖</div></div>
     </div>
   </div>
-  <div class="scrollhint">▼ SCROLL</div>
+  <div class="scrollhint enter-only">▼ SCROLL · 向下进入展厅</div>
 </header>
 
 <div class="wrap">
@@ -285,46 +400,29 @@
     <div class="proj-head">
       <div class="proj-num">01</div>
       <div class="proj-title">
-        <h2>Wormhood · 蠕虫隧道</h2>
+        <h2>Wormhood</h2>
         <div class="en">— INFINITE WORM TUNNEL —</div>
       </div>
     </div>
-    <div class="card p1c">
-      <div class="preview" data-src="wormhood-shadertoy/index.html">
-        <div class="cover" onclick="loadPreview(this)">
-          <div class="play">▶</div>
-          <div class="t1">WORMHOOD</div>
-          <div class="t2">点击加载 WebGL 实时画面（可在框内直接游玩）</div>
-        </div>
-        <div class="kbdhint">⌨ 点击画面获取焦点后可用：空格暂停 · R 重置 · F 全屏</div>
-        <div class="tools">
-          <a href="wormhood-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
-        </div>
+    <div class="intro">
+      <p>你正被吞没。四周的管腔壁面湿滑蠕动，随着某种巨大生物的呼吸节律挤压、收缩，而你正在它体内不断向深处爬行。</p>
+      <p>本项目是 Shadertoy 经典着色器 Wormhood（原作者 finalman, 2016）的本地 WebGL 复刻增强版。单文件、零依赖、双击 index.html 即可坠入这条活体隧道：隧道壁面像肌肉一样收缩挤压，如蹦床般弹跳起伏，晃动镜头模拟爬行者颤抖的视角，不安感扑面而来。半透明的虫子融入雾中，若隐若现。它们的速度和你一致——停下来想想，这真的只是巧合吗？</p>
+      <p>鼠标移动操控手电筒，空格暂停，R 重置，F 全屏。但在这种地方，暂停真的有用吗？</p>
+    </div>
+    <div class="preview" data-src="wormhood-shadertoy/index.html">
+      <div class="cover" onclick="loadPreview(this)">
+        <div class="play">▶</div>
+        <div class="t1">WORMHOOD</div>
+        <div class="t2">点击加载 WebGL 实时画面（可在框内直接游玩）</div>
       </div>
-      <div class="info">
-        <div class="origin">
-          <span class="tag hl">复刻自 Shadertoy «MdcSRj»</span>
-          <span class="tag">原作者 finalman · 2016</span>
-          <span class="tag">增强版</span>
-        </div>
-        <p class="desc">
-          无数发光的虫子在幽暗管腔中蠕动穿行。本项目在本地忠实复刻原作画风的
-          同时，扩展了完整的实时参数系统与多种氛围效果——从虫群透明度曲线、
-          壁面蹦床弹跳，到手电筒探索模式与信号干扰，一切皆可实时调节。
-        </p>
-        <div class="feat">
-          <div class="f"><span class="ico">🎛️</span><span><b>30+ 参数滑块</b>虫群 / 管腔 / 镜头实时调节</span></div>
-          <div class="f"><span class="ico">🔦</span><span><b>手电筒模式</b>鼠标照明 · 蠕动光边 · 颗粒闪烁</span></div>
-          <div class="f"><span class="ico">🫧</span><span><b>穿透式透明度</b>近处渐隐 · 中距清晰 · 远处溶雾</span></div>
-          <div class="f"><span class="ico">🌀</span><span><b>壁面蹦床</b>流动噪声驱动的此起彼伏弹跳</span></div>
-          <div class="f"><span class="ico">📺</span><span><b>氛围特效</b>管腔挤压 · 手持晃动 · 信号干扰</span></div>
-          <div class="f"><span class="ico">⌨️</span><span><b>预设与快捷键</b>默认 / 原版画风一键切换</span></div>
-        </div>
-        <div class="btns">
-          <a class="btn" href="https://github.com/Knighfff/wormhood-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
-          <a class="btn" href="wormhood-shadertoy/wormhood.frag" target="_blank" rel="noopener">查看 GLSL 源码</a>
-        </div>
+      <div class="kbdhint">⌨ 点击画面获取焦点后可用：鼠标移动 照明 · 空格暂停 · R 重置 · F 全屏</div>
+      <div class="tools">
+        <a href="wormhood-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
       </div>
+    </div>
+    <div class="btns">
+      <a class="btn" href="https://github.com/Knighfff/wormhood-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+      <a class="btn" href="wormhood-shadertoy/wormhood.frag" target="_blank" rel="noopener">查看 GLSL 源码</a>
     </div>
   </section>
 
@@ -333,46 +431,29 @@
     <div class="proj-head">
       <div class="proj-num">02</div>
       <div class="proj-title">
-        <h2>SpiderWeb · 蛛网布料物理</h2>
+        <h2>SpiderWeb</h2>
         <div class="en">— CLOTH PHYSICS ON GPU —</div>
       </div>
     </div>
-    <div class="card p2c">
-      <div class="preview" data-src="spiderweb-shadertoy/index.html">
-        <div class="cover" onclick="loadPreview(this)">
-          <div class="play">▶</div>
-          <div class="t1">SPIDERWEB</div>
-          <div class="t2">点击加载 WebGL 实时画面（按住鼠标可拉扯蛛网）</div>
-        </div>
-        <div class="kbdhint">⌨ 点击画面获取焦点后可用：空格暂停 · R 重置 · P 参数面板</div>
-        <div class="tools">
-          <a href="spiderweb-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
-        </div>
+    <div class="intro">
+      <p>黑暗中，一只蜘蛛停在一张并不稳定的网上。它似乎在等待，也似乎在躲避某种无法命名的靠近......</p>
+      <p>玩家可以点击、拖拽蛛网，观察触碰产生的震动如何沿着网格扩散；<b>【请帮助蜘蛛顺利通关逃离，若不知如何探索可以点击提示按钮进行交互。】</b></p>
+      <p>游戏通过蛛网的弹性、重力、摩擦与共振等物理变化，将“触碰—扰动—焦虑—逃离”的过程转化为可感知的互动体验，让“不安”不再只是一个抽象情绪，而是通过蜘蛛的抖动、蛛网的摆动和持续爬行呈现出来。</p>
+    </div>
+    <div class="preview" data-src="spiderweb-shadertoy/index.html">
+      <div class="cover" onclick="loadPreview(this)">
+        <div class="play">▶</div>
+        <div class="t1">SPIDERWEB</div>
+        <div class="t2">点击加载 WebGL 实时画面（按住鼠标可拉扯蛛网）</div>
       </div>
-      <div class="info">
-        <div class="origin">
-          <span class="tag hl">复刻自 Shadertoy «4fc3zf»</span>
-          <span class="tag">原作者 middle</span>
-          <span class="tag">关卡模式增强</span>
-        </div>
-        <p class="desc">
-          一只白蜘蛛挂在真实布料物理模拟的蛛网上：10×7 节点网格做 Verlet 积分，
-          胡克定律弹簧约束，带重力、摩擦与回弹，8 只脚被弹簧拉向身体质心。
-          按住鼠标即可拉扯蛛网——全部由 GPU 着色器实时计算，并内置 6 关物理教学模式。
-        </p>
-        <div class="feat">
-          <div class="f"><span class="ico">🕸️</span><span><b>真实布料物理</b>Verlet 积分 + 胡克定律弹簧</span></div>
-          <div class="f"><span class="ico">🖱️</span><span><b>鼠标拉扯交互</b>按住拖动，蛛网与蜘蛛实时响应</span></div>
-          <div class="f"><span class="ico">🎮</span><span><b>6 关教学模式</b>悬念提示 + 两档引导，不可跳关</span></div>
-          <div class="f"><span class="ico">🎓</span><span><b>通关物理讲解</b>教学对话框 + 马赛克像素烟花</span></div>
-          <div class="f"><span class="ico">🎛️</span><span><b>物理参数面板</b>刚度 / 摩擦 / 重力 / 网距实时调</span></div>
-          <div class="f"><span class="ico">⚡</span><span><b>GPU 三 Pass</b>Buffer A 物理 ping-pong + Image</span></div>
-        </div>
-        <div class="btns">
-          <a class="btn" href="https://github.com/zhupoyi070-glitch/spiderweb-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
-          <a class="btn primary2" href="https://zhupoyi070-glitch.github.io/spiderweb-shadertoy/" target="_blank" rel="noopener">在线版 · 打开即玩 ↗</a>
-        </div>
+      <div class="kbdhint">⌨ 点击画面获取焦点后可用：空格暂停 · R 重置 · P 参数面板</div>
+      <div class="tools">
+        <a href="spiderweb-shadertoy/index.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
       </div>
+    </div>
+    <div class="btns">
+      <a class="btn" href="https://github.com/zhupoyi070-glitch/spiderweb-shadertoy" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+      <a class="btn primary2" href="https://zhupoyi070-glitch.github.io/spiderweb-shadertoy/" target="_blank" rel="noopener">在线版 · 打开即玩 ↗</a>
     </div>
   </section>
 
@@ -381,48 +462,29 @@
     <div class="proj-head">
       <div class="proj-num">03</div>
       <div class="proj-title">
-        <h2>Moorlands · 荒原排线速写</h2>
+        <h2>Moorlands</h2>
         <div class="en">— CHARCOAL SKETCH ON THE MOOR —</div>
       </div>
     </div>
-    <div class="card p3c">
-      <div class="preview" data-src="shadertoy-fX2GRG/original-pure.html">
-        <div class="cover" onclick="loadPreview(this)">
-          <div class="play">▶</div>
-          <div class="t1">MOORLANDS</div>
-          <div class="t2">点击加载 WebGL 实时画面（根须生物 · WASD 可操控爬行）</div>
-        </div>
-        <div class="kbdhint">⌨ 点击画面获取焦点后：WASD/方向键 爬行 · R 复位 · 空格 暂停</div>
-        <div class="tools">
-          <a href="shadertoy-fX2GRG/original-pure.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
-        </div>
+    <div class="intro">
+      <p>以“不安地爬行”为主题的交互影像。</p>
+      <p>素描抖动的排线，构成画面全部肌理，杂乱晃动的线条外化内心焦躁。广阔空旷的荒原隐喻未知恐惧；抽象模糊的虫形陌生诡异。通过 WASD 操控主体爬行，鼠标拖拽旋转视角、滚轮缩放视野。当观者亲手驱动渺小的形体穿行于宏大旷野，爬行不再只是动作，而是面对未知时谨慎惶然的精神投射，在交互体验中唤起细微、毛骨悚然的不安情绪。</p>
+    </div>
+    <div class="preview" data-src="shadertoy-fX2GRG/scene3d.html">
+      <div class="cover" onclick="loadPreview(this)">
+        <div class="play">▶</div>
+        <div class="t1">MOORLANDS</div>
+        <div class="t2">点击加载 WebGL 实时画面（WASD 爬行 · 拖拽旋转视角 · 滚轮缩放）</div>
       </div>
-      <div class="info">
-        <div class="origin">
-          <span class="tag hl">复刻自 Shadertoy «fX2GRG»</span>
-          <span class="tag">原作者 PrzemyslawZaworski</span>
-          <span class="tag">三种形态</span>
-        </div>
-        <p class="desc">
-          光线步进渲染的荒原上，整个画面被实时生成的边缘排线覆盖，如同一幅会动的
-          炭笔速写。更新后的默认入口是根须生物版：人形生物替换为丛生根须的四足生物，
-          可用 WASD / 方向键操控它以节肢步态爬行——按住越久步频越快。另有
-          人形·参数版与铅笔圈线的「不安静物」绘画版两种形态。
-        </p>
-        <div class="feat">
-          <div class="f"><span class="ico">🌿</span><span><b>根须生物 · 默认入口</b>WASD 操控节肢步态爬行</span></div>
-          <div class="f"><span class="ico">🖋️</span><span><b>边缘排线风格</b>光线步进场景实时炭笔描边</span></div>
-          <div class="f"><span class="ico">🎛️</span><span><b>实时参数面板</b>密度 / 抖动 / 卷曲 / 帧数上限</span></div>
-          <div class="f"><span class="ico">🎨</span><span><b>绘画改编版</b>art.html 永远画不完的「不安静物」</span></div>
-          <div class="f"><span class="ico">🚶</span><span><b>人形·参数版</b>original.html 荒原行者漫步</span></div>
-          <div class="f"><span class="ico">📸</span><span><b>快照机制</b>snapshot.bat 存档 · restore.bat 回溯</span></div>
-        </div>
-        <div class="btns">
-          <a class="btn" href="https://github.com/haripandesu/shadertoy-fX2GRG" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
-          <a class="btn primary3" href="shadertoy-fX2GRG/art.html" target="_blank" rel="noopener">绘画版 · 不安静物 ↗</a>
-          <a class="btn" href="shadertoy-fX2GRG/original.html" target="_blank" rel="noopener">人形·参数版 ↗</a>
-        </div>
+      <div class="kbdhint">⌨ 点击画面获取焦点后：WASD 爬行 · 鼠标拖拽旋转视角 · 滚轮缩放 · R 复位</div>
+      <div class="tools">
+        <a href="shadertoy-fX2GRG/scene3d.html" target="_blank" rel="noopener">↗ 新标签页全屏</a>
       </div>
+    </div>
+    <div class="btns">
+      <a class="btn" href="https://github.com/haripandesu/shadertoy-fX2GRG" target="_blank" rel="noopener">GitHub 仓库 ↗</a>
+      <a class="btn primary3" href="shadertoy-fX2GRG/art.html" target="_blank" rel="noopener">绘画版 · 不安静物 ↗</a>
+      <a class="btn" href="shadertoy-fX2GRG/original.html" target="_blank" rel="noopener">人形·参数版 ↗</a>
     </div>
   </section>
 
@@ -583,6 +645,122 @@ function loadPreview(cover) {
   check();
   setTimeout(check, 400);
   setTimeout(check, 1200);
+})();
+
+/* ---- 首页闸门：点击「进入暗面」触发 Apple 式穿越过渡 ---- */
+(function () {
+  var btn = document.getElementById('enterBtn');
+  function enter() {
+    if (!document.body.classList.contains('gate') || document.body.classList.contains('leaving')) return;
+    document.body.classList.add('leaving');
+    setTimeout(function () {
+      document.body.classList.remove('gate', 'leaving');
+      document.body.classList.add('entered');
+      setTimeout(function () {
+        var p1 = document.getElementById('p1');
+        if (p1) p1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }, 820);
+  }
+  if (btn) btn.addEventListener('click', enter);
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.id === 'titleBtn') return;
+    if (!document.body.classList.contains('gate')) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      var sub = document.getElementById('coverSub');
+      if (sub && !sub.classList.contains('open')) {
+        var tb = document.getElementById('titleBtn');
+        if (tb) tb.click();
+        return;
+      }
+      enter();
+    }
+  });
+  var logo = document.querySelector('nav .logo');
+  if (logo) logo.addEventListener('click', function (e) {
+    e.preventDefault();
+    window.scrollTo(0, 0);
+    document.body.classList.remove('entered');
+    document.body.classList.add('gate');
+  });
+})();
+
+/* ---- 封面标题交互：点击「持续偏移」显影副文案，按钮随副文案一同出现 ---- */
+(function () {
+  var btn = document.getElementById('titleBtn');
+  var sub = document.getElementById('coverSub');
+  var hint = document.getElementById('titleHint');
+  var cta = document.getElementById('gateCta');
+  if (!btn || !sub || !cta) return;
+  function reveal() {
+    if (sub.classList.contains('open')) return;
+    sub.classList.add('open');
+    cta.classList.add('open');
+    btn.classList.add('revealed');
+    btn.setAttribute('aria-expanded', 'true');
+    if (hint) hint.classList.add('gone');
+  }
+  btn.addEventListener('click', reveal);
+})();
+
+/* ---- 全站光标：微光点 + 延迟跟随的模糊光斑轨迹 ---- */
+(function () {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var dot = document.createElement('div');
+  dot.className = 'cursor-dot';
+  document.body.appendChild(dot);
+  var N = 10, trail = [];
+  for (var i = 0; i < N; i++) {
+    var t = document.createElement('div');
+    t.className = 'cursor-trail';
+    var s = 30 - i * 2.2;
+    t.style.width = t.style.height = s + 'px';
+    t.style.margin = (-s / 2) + 'px 0 0 ' + (-s / 2) + 'px';
+    document.body.appendChild(t);
+    trail.push(t);
+  }
+  document.body.classList.add('has-cursor');
+
+  var mx = -999, my = -999, seen = false, inside = true, vis = 0;
+  var dx = -999, dy = -999, px = [], py = [];
+  for (var j = 0; j < N; j++) { px.push(-999); py.push(-999); }
+
+  document.addEventListener('mousemove', function (e) {
+    mx = e.clientX; my = e.clientY;
+    if (!seen) {
+      seen = true; dx = mx; dy = my;
+      for (var k = 0; k < N; k++) { px[k] = mx; py[k] = my; }
+    }
+  });
+  document.addEventListener('mouseover', function () { inside = true; });
+  document.addEventListener('mouseout', function (e) {
+    if (!e.relatedTarget || e.relatedTarget.nodeName === 'IFRAME') inside = false;
+  });
+  document.addEventListener('mousedown', function () { dot.classList.add('down'); });
+  document.addEventListener('mouseup', function () { dot.classList.remove('down'); });
+
+  (function loop() {
+    var target = (seen && inside) ? 1 : 0;
+    vis += (target - vis) * 0.16;
+    if (vis > 0.004) {
+      dx += (mx - dx) * 0.6; dy += (my - dy) * 0.6;
+      dot.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      dot.style.opacity = vis;
+      var lx = dx, ly = dy;
+      for (var k = 0; k < N; k++) {
+        px[k] += (lx - px[k]) * 0.16;
+        py[k] += (ly - py[k]) * 0.16;
+        trail[k].style.transform = 'translate(' + px[k] + 'px,' + py[k] + 'px)';
+        trail[k].style.opacity = vis * (0.75 - k * 0.06);
+        lx = px[k]; ly = py[k];
+      }
+    } else if (dot.style.opacity !== '0') {
+      dot.style.opacity = 0;
+      for (var k2 = 0; k2 < N; k2++) trail[k2].style.opacity = 0;
+    }
+    requestAnimationFrame(loop);
+  })();
 })();
 </script>
 </body>

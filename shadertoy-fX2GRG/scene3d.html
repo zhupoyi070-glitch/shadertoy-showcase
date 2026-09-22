@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Horror of the Moorlands — 原版复刻（参数可调）</title>
+<title>The Horror of the Moorlands — 3D 视角版（素描风）</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
     font-family: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei", sans-serif; }
   #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
-    cursor: crosshair; touch-action: none; }
+    cursor: grab; touch-action: none; }
   #hud { position: fixed; left: 14px; top: 12px; color: #cfd3dc; user-select: none;
     pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,.9); line-height: 1.45; }
   #hud .t { font-size: 15px; font-weight: 600; color: #fff; }
@@ -35,6 +35,19 @@
     background: #2a1215; color: #ffb4b4; border: 1px solid #7a2e2e; border-radius: 10px;
     padding: 18px 22px; white-space: pre-wrap; font: 12.5px/1.6 Consolas, monospace;
     max-height: 70vh; overflow: auto; z-index: 10; }
+  #intro { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    z-index: 8; transition: opacity .45s ease; }
+  #intro.hide { opacity: 0; pointer-events: none; }
+  #introCard { width: min(360px, 84vw); background: rgba(16,18,24,.78); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 12px; padding: 16px 20px 14px; backdrop-filter: blur(6px); color: #cfd3dc;
+    text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,.45); }
+  #introCard h3 { margin: 0 0 10px; font-size: 13.5px; color: #fff; letter-spacing: .05em; }
+  #introCard .k { margin: 7px 0; font-size: 12.5px; color: #b9bfca; }
+  #introCard .keys { display: inline-block; background: #23262e; border: 1px solid #3a3f4b;
+    border-radius: 6px; padding: 2px 8px; margin: 0 2px; color: #e6e9ef; font-size: 12px; }
+  #btnIntroOk { margin-top: 12px; background: #2f5db3; color: #fff; border: 1px solid #4a79cf;
+    border-radius: 8px; padding: 6px 26px; font-size: 13px; cursor: pointer; }
+  #btnIntroOk:hover { background: #3a6cc7; }
 </style>
 </head>
 <body>
@@ -42,7 +55,7 @@
 
 <div id="hud">
   <div class="t">The Horror of the Moorlands</div>
-  <div class="s">原版复刻（参数可调） · 原作：<a href="https://www.shadertoy.com/view/fX2GRG" target="_blank" rel="noopener">shadertoy.com/view/fX2GRG</a> · <a href="original.html">参数版（含走路）</a> · 方向键/WASD 让根须爬行 · <a href="scene3d.html">3D 视角版</a></div>
+  <div class="s">3D 视角版（素描风） · 原作：<a href="https://www.shadertoy.com/view/fX2GRG" target="_blank" rel="noopener">shadertoy.com/view/fX2GRG</a> · <b>鼠标拖拽旋转视角 · 滚轮缩放</b> · WASD/方向键让根须爬行 · <a href="original-pure.html">纯原版</a> · <a href="original.html">参数版</a></div>
   <div class="s" id="stat"></div>
 </div>
 
@@ -59,6 +72,16 @@
 </div>
 
 <div id="err" hidden></div>
+
+<div id="intro">
+  <div id="introCard">
+    <h3>操 作 提 示</h3>
+    <div class="k"><span class="keys">W A S D</span> 或 <span class="keys">↑ ↓ ← →</span> 控制虫子移动</div>
+    <div class="k"><span class="keys">鼠标滚轮</span> 放大 / 缩小画面</div>
+    <div class="k"><span class="keys">鼠标拖拽</span> 改变视角</div>
+    <button id="btnIntroOk">确 认</button>
+  </div>
+</div>
 
 <div id="panel">
   <h3>参数</h3>
@@ -299,8 +322,11 @@ float Shadow(vec3 ro, vec3 rd)
 void mainImage(out vec4 fragColor, in vec2 fragCoord)
 {
     vec2 uv = (fragCoord-.5*iResolution.xy)/iResolution.y;
-    vec3 ro = vec3(0.0,5.0,-8.);
-    vec3 ta = vec3(0,4.0,0);
+    // 3D 轨道相机：绕注视点（根须生物）旋转，方位/俯仰/距离由页面鼠标控制
+    vec3 ro = uCamTarget + uCamDist * vec3(sin(uCamYaw) * cos(uCamPitch),
+                                           sin(uCamPitch),
+                                           cos(uCamYaw) * cos(uCamPitch));
+    vec3 ta = uCamTarget;
     vec3 f = normalize(ta-ro);
     vec3 r = normalize(cross(vec3(0,1,0),f));
     vec3 u = cross(f,r);
@@ -508,6 +534,10 @@ uniform vec2  uCrawlDir;    // 爬行方向
 uniform float uCrawl;       // 爬行强度（0.15 常态 .. 1 全力蠕动）
 uniform float uGaitT;       // 步态时间（步频随移动速度/焦躁提升）
 uniform float uTurn;        // 根须转体角（转向时整体转身）
+uniform float uCamYaw;      // 相机方位角（鼠标拖拽旋转）
+uniform float uCamPitch;    // 相机俯仰角（鼠标拖拽旋转）
+uniform float uCamDist;     // 相机距离（滚轮缩放）
+uniform vec3  uCamTarget;   // 相机注视点（跟随根须生物）
 
 ` + user + `
 out vec4 outColor;
@@ -559,7 +589,7 @@ void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
   };
 
   const passDefs = [
-    { name: "Buffer A", file: "bufferA-pure.frag", toScreen: false, channels: [null, null, null, null] },
+    { name: "Buffer A", file: "bufferA-3d.frag", toScreen: false, channels: [null, null, null, null] },
     { name: "Image",    file: "image-pure.frag",   toScreen: true,  channels: ["Buffer A", null, null, null] },
   ];
 
@@ -611,6 +641,10 @@ void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
   const mouse = [0, 0, 0, 0];
   let dragging = false;
 
+  // ---------- 3D 相机：鼠标拖拽旋转 / 滚轮缩放，注视点跟随根须生物 ----------
+  const cam = { yaw: Math.PI, pitch: 0.25, dist: 8.0 };
+  let camDrag = false, camLastX = 0, camLastY = 0;
+
   // ---------- 可调参数 ----------
   const PARAMS = [
     ["uDensity",     "线条密度", 0.4, 2.6, 0.02, 0.4],
@@ -647,6 +681,11 @@ void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
   });
   document.getElementById("btnPanel").addEventListener("click", () =>
     document.getElementById("panel").classList.toggle("hidden"));
+  document.getElementById("btnIntroOk").addEventListener("click", () => {
+    const intro = document.getElementById("intro");
+    intro.classList.add("hide");
+    setTimeout(() => intro.remove(), 500);
+  });
 
   // ---------- 人形位置（方向键/WASD 控制，贴地行走） ----------
   const creaturePos = { x: 0, z: 0 };
@@ -741,6 +780,13 @@ void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
       setUnif(p, "uCrawl", loc => gl.uniform1f(loc, crawl.inten));
       setUnif(p, "uGaitT", loc => gl.uniform1f(loc, gaitT));
       setUnif(p, "uTurn", loc => gl.uniform1f(loc, crawl.turn));
+      setUnif(p, "uCamTarget", loc =>
+        gl.uniform3f(loc, creaturePos.x,
+          sTerrain(creaturePos.x, creaturePos.z) + 0.5 * param.uFigSize,
+          creaturePos.z));
+      setUnif(p, "uCamYaw", loc => gl.uniform1f(loc, cam.yaw));
+      setUnif(p, "uCamPitch", loc => gl.uniform1f(loc, cam.pitch));
+      setUnif(p, "uCamDist", loc => gl.uniform1f(loc, cam.dist));
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
@@ -825,11 +871,29 @@ void main(){ mainImage(outColor, gl_FragCoord.xy); }`;
     mouse[0] = px; mouse[1] = py;
     if (down) { mouse[2] = px; mouse[3] = py; }
   }
-  canvas.addEventListener("mousedown", e => { dragging = true; updMouse(e, true); });
-  window.addEventListener("mousemove", e => { if (dragging) updMouse(e, true); });
+  canvas.addEventListener("mousedown", e => {
+    dragging = true; camDrag = true;
+    camLastX = e.clientX; camLastY = e.clientY;
+    canvas.style.cursor = "grabbing";
+    updMouse(e, true);
+  });
+  window.addEventListener("mousemove", e => {
+    if (dragging) updMouse(e, true);
+    if (camDrag) {
+      cam.yaw += (e.clientX - camLastX) * 0.008;
+      cam.pitch = Math.min(1.35, Math.max(0.06, cam.pitch - (e.clientY - camLastY) * 0.006));
+      camLastX = e.clientX; camLastY = e.clientY;
+    }
+  });
   window.addEventListener("mouseup", () => {
     if (dragging) { dragging = false; mouse[2] = -Math.abs(mouse[2]); mouse[3] = -Math.abs(mouse[3]); }
+    camDrag = false;
+    canvas.style.cursor = "grab";
   });
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    cam.dist = Math.min(24, Math.max(3, cam.dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08)));
+  }, { passive: false });
 
   function togglePause() {
     paused = !paused;

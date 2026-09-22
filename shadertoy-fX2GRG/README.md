@@ -14,6 +14,11 @@
   **方向键 / WASD 让根须以节肢步态爬行**（奇偶分组交替迈步、躯干随步耸动、
   转向时通过迈步直接调转身体朝向），按住越久越抗拒、步频越快，R 键复位。
   静态纯原版存档在 `versions\snapshot-20260917-132045\`（着色器与原作逐字一致）。
+- **3D 视角版**：`scene3d.html` — 与纯原版同一素描排线场景的 3D 交互版：
+  打开时先显示操作提示（点「确认」进入画面）；**鼠标拖拽旋转视角、滚轮缩放**，
+  注视点跟随根须生物（相机方位/俯仰/距离
+  由 `uCamYaw/uCamPitch/uCamDist/uCamTarget` 传入 Buffer A）；WASD/方向键
+  仍可驱动根须爬行，视角自动跟随。
 - **绘画版**：`art.html` — 保留原作场景骨架与人形，画面改编为铅笔排线风格的
   "不安静物"（The Quiet Presence）：奶油色纸面上，极细锐的铅笔圈线以人形为
   唯一中心一圈圈包裹、向全画发散；圈线随角度自由起伏、断笔、两套圈距互相
@@ -35,9 +40,11 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `index.html` | 入口页：自动跳转到纯原版 `original-pure.html` |
+| `index.html` | 入口页：自动跳转到 3D 视角版 `scene3d.html`（默认打开的版本） |
 | `original-pure.html` | 纯原版（默认打开的版本）：根须生物 + 参数面板 + WASD 爬行 |
 | `original.html` | 原版复刻（人形·参数版）：WebGL2 运行环境 + 内嵌原作着色器副本 + 控制条 |
+| `scene3d.html` | 3D 视角版：素描风场景 + 鼠标拖拽旋转视角 / 滚轮缩放 |
+| `bufferA-3d.frag` | 3D 视角版 Buffer A：bufferA-pure + 轨道相机 |
 | `bufferA-original.frag` / `image-original.frag` | 原作源码（光线步进 / 边缘排线），original.html 优先加载 |
 | `art.html` | 绘画版：铅笔圈线改编 + 右上角参数面板 |
 | `bufferA.frag` / `image.frag` | 绘画版着色器源码（art.html 优先加载） |
